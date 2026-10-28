@@ -8,7 +8,7 @@ API del proyecto universitario Liga Amateur Santafesina. Esta rama prepara únic
 - Spring Boot 3.5.9, Maven Wrapper incluido, Spring Web, Spring Data JPA, Bean Validation y H2 en archivo.
 - Git para trabajar en ramas independientes. El frontend React Native/Expo vive en otro repositorio.
 
-El proyecto Maven está en **`backend/backend/`** respecto de la carpeta principal del proyecto, o en **`backend/`** respecto de la raíz de *este repositorio*. Los comandos siguientes se ejecutan desde la raíz del repositorio backend en PowerShell:
+El proyecto Maven está en **`backend/`** respecto de la raíz de *este repositorio*. Los comandos siguientes se ejecutan desde la raíz del repositorio backend en PowerShell:
 
 ```powershell
 cd backend
@@ -68,6 +68,13 @@ Las pruebas aisladas del manejador de errores usan MockMvc sin iniciar el contex
 ```
 
 El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H2: **no ejecutarlo sin autorización y sin prever la pérdida de datos**. Documentar los comandos y resultados efectivamente ejecutados en cada PR.
+
+## Documentación
+
+- **`docs/API.md`**: convenciones HTTP, formato de error implementado, permisos y estado de los endpoints. Actualizarlo en el mismo PR que agrega o modifica cada endpoint.
+- **`docs/PREGUNTAS_PENDIENTES.md`**: preguntas para el cliente y decisiones técnicas que el grupo todavía debe acordar. No resolver por cuenta propia un tema marcado como abierto.
+- **`README.md`**: este archivo; mantenerlo actualizado con prerequisitos, configuración, ejecución y pruebas.
+- **`SPEC.md`**: especificación funcional y fuente de verdad de los requerimientos (se entrega junto con el proyecto; no se modifica sin confirmación del cliente).
 
 ## Trabajo en equipo
 
