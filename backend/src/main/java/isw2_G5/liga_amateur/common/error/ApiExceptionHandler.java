@@ -4,6 +4,8 @@ import isw2_G5.liga_amateur.common.dto.ApiErrorResponse;
 import isw2_G5.liga_amateur.common.dto.ApiErrorResponse.ValidationError;
 import java.time.Instant;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -21,6 +23,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  */
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
     /**
      * Devuelve todos los errores de validación del cuerpo sin exponer los valores enviados.
@@ -66,6 +70,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Oculta excepciones no previstas para no devolver trazas o mensajes internos al cliente.
+     * La excepción completa queda registrada en el log del servidor para poder diagnosticarla.
      *
      * @param exception fallo no contemplado por Spring MVC
      * @param request solicitud que originó el error
@@ -73,6 +78,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpectedException(Exception exception, WebRequest request) {
+        log.error("Error no controlado", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(response(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno del servidor", request, List.of()));
     }
