@@ -38,9 +38,11 @@ Documento vivo del contrato HTTP del backend. **Estado actual: base compartida, 
 | RF-11 Tabla de posiciones | Sí | Sí | Sí |
 | RF-12 Suspendidos de una fecha | Sí | Sí | Sí |
 
-## 3. Formato de error (implementado)
+## 3. Formato de error (implementado para errores de Spring MVC)
 
-Todas las respuestas de error usan este cuerpo:
+Este contrato está implementado actualmente para los errores manejados por Spring MVC (validación, cuerpo mal formado, 404, 405, 415 y errores inesperados). Los **401/403 de Spring Security** y el **409 por violaciones de integridad** todavía están pendientes de implementación (ver T-03 y T-04 en `PREGUNTAS_PENDIENTES.md`); cuando se agreguen, deberán usar este mismo cuerpo.
+
+El formato definido es:
 
 ```json
 {
