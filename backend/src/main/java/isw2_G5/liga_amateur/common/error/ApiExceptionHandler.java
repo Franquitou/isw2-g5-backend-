@@ -69,6 +69,64 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Traduce un recurso inexistente al cuerpo de error común con HTTP 404.
+     *
+     * @param exception excepción lanzada por el módulo que no encontró el recurso
+     * @param request solicitud que originó el error
+     * @return respuesta HTTP 404 con el mensaje del módulo
+     */
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecursoNoEncontrado(
+            RecursoNoEncontradoException exception, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(response(HttpStatus.NOT_FOUND, exception.getMessage(), request, List.of()));
+    }
+
+    /**
+     * Traduce una validación de solicitud al cuerpo de error común con HTTP 400.
+     *
+     * @param exception excepción lanzada por la validación del módulo
+     * @param request solicitud que originó el error
+     * @return respuesta HTTP 400 con el mensaje del módulo
+     */
+    @ExceptionHandler(SolicitudInvalidaException.class)
+    public ResponseEntity<ApiErrorResponse> handleSolicitudInvalida(
+            SolicitudInvalidaException exception, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(response(HttpStatus.BAD_REQUEST, exception.getMessage(), request, List.of()));
+    }
+
+    /**
+     * Traduce un conflicto de negocio o de unicidad al cuerpo de error común con HTTP 409.
+     *
+     * @param exception excepción lanzada por la regla de negocio
+     * @param request solicitud que originó el error
+     * @return respuesta HTTP 409 con el mensaje del módulo
+     */
+    @ExceptionHandler(ConflictoException.class)
+    public ResponseEntity<ApiErrorResponse> handleConflicto(ConflictoException exception, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(response(HttpStatus.CONFLICT, exception.getMessage(), request, List.of()));
+    }
+
+    /**
+     * Convierte una violación de integridad que no llegó a validarse antes en un 409 genérico,
+     * sin exponer el detalle de la base de datos.
+     *
+     * @param exception violación detectada por la base al guardar
+     * @param request solicitud que originó el error
+     * @return respuesta HTTP 409 sin detalles internos
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleIntegridad(
+            org.springframework.dao.DataIntegrityViolationException exception, WebRequest request) {
+        log.warn("Violación de integridad al procesar la solicitud", exception);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(response(HttpStatus.CONFLICT, "La operación entra en conflicto con los datos existentes",
+                        request, List.of()));
+    }
+
+    /**
      * Oculta excepciones no previstas para no devolver trazas o mensajes internos al cliente.
      * La excepción completa queda registrada en el log del servidor para poder diagnosticarla.
      *
