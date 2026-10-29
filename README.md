@@ -76,6 +76,18 @@ El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H
 - **`README.md`**: este archivo; mantenerlo actualizado con prerequisitos, configuración, ejecución y pruebas.
 - **`SPEC.md`**: especificación funcional y fuente de verdad de los requerimientos (se entrega junto con el proyecto; no se modifica sin confirmación del cliente).
 
+### Seguridad base (etapa previa a RF-01)
+
+La cadena de seguridad permite únicamente las consultas públicas y el futuro `POST /api/auth/login`; las escrituras requieren ADMIN o DELEGADO según la matriz de permisos aprobada. Las rutas no contempladas quedan denegadas. Usa sesiones sin estado y responde 401/403 con `ApiErrorResponse` desde los filtros (antes de `@RestControllerAdvice`). No se habilitan formulario web ni HTTP Basic. **Todavía no existe autenticación JWT ni login funcional**: un encabezado Bearer por sí solo no otorga acceso hasta implementar la siguiente etapa. No confundir la contraseña temporal que Spring genera en su log con el administrador precargado del SQL.
+
+La prueba MVC de esta política usa `spring.sql.init.mode=never` y una URL H2 **en memoria** como salvaguarda; la porción MVC no registra `DataSource`. Desde el proyecto Maven:
+
+```powershell
+.\mvnw.cmd -Dtest=SecurityConfigurationTest test
+```
+
+No ejecutar `test` sin filtro mientras el contexto completo pueda reinicializar la H2 en archivo. Las dependencias de seguridad provienen del PR de dependencias: este incremento no modifica `pom.xml`.
+
 ## Trabajo en equipo
 
 Cada funcionalidad se implementa en su propia rama creada desde `main` actualizado; no desarrollar ni hacer push directo sobre `main`. Mantener commits pequeños y descriptivos; revisar `git diff`, `git status`, build, pruebas y documentación antes de abrir un Pull Request hacia `main`. Cada PR debe ser aprobado por **otro integrante** antes de integrarse. Los cambios de frontend llevan rama y PR propios en el repositorio de la app; acordar antes los DTOs y el contrato de API entre ambos repositorios. No hacer push ni merge sin autorización del coordinador.
