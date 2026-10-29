@@ -1,25 +1,31 @@
 # API — Liga Amateur Santafesina
 
-Documento vivo del contrato HTTP del backend. **Estado actual: base compartida, sin endpoints de negocio implementados.** Este archivo se actualiza en el mismo PR que agrega o modifica cada endpoint.
+Contrato REST acordado por Franco (A) y Marcos (B) para los cuatro módulos. **Es una definición de interfaz, no una declaración de implementación:** los endpoints de RF-01 a RF-12 siguen pendientes hasta que sus PRs los incorporen y prueben. José (C) y Mateo (D) implementan sus secciones respetando este contrato. Actualizar este archivo en el mismo PR que cambie una interfaz.
+
+Fuente funcional: `liga_amateur_opencode/SPEC.md` y el PDF del cliente (ambos en la raíz del espacio de trabajo); estructura exacta: `backend/src/main/resources/schema.sql` (ruta relativa a la raíz del repositorio backend). Las aclaraciones acordadas constan en `docs/PREGUNTAS_PENDIENTES.md`. No crear tablas ni operaciones de negocio fuera de ese alcance.
 
 ## 1. Convenciones generales
 
 | Tema | Convención |
 |---|---|
-| Formato | JSON UTF-8, `Content-Type: application/json` |
-| Fechas y horas | ISO-8601. Los `timestamp` de error se expresan en UTC (`Z`). La zona horaria de `fecha_hora_inicio` está pendiente de confirmar (ver `PREGUNTAS_PENDIENTES.md`). |
-| Respuestas | Siempre DTOs; nunca entidades JPA, contraseñas ni hashes. |
+| Rutas | Prefijo `/api`, recursos plurales. Los parámetros `{id}`, `{torneoId}`, `{equipoId}`, `{partidoId}`, `{eventoId}` son IDs `INT` positivos generados por H2; `numeroFecha` es una jornada entera desde 1. |
+| Formato | JSON UTF-8, `Content-Type: application/json` en cuerpos; propiedades `camelCase`. Las listas son arreglos JSON, sin paginación obligatoria. |
+| Fechas y horas | ISO-8601 con offset para `fechaHoraInicio` y `fechaAlta`. Interpretar el `TIMESTAMP` sin zona de H2 en `America/Argentina/Buenos_Aires`: al recibir un valor con offset, convertir el instante a esa zona y guardar la fecha/hora local; al leer, asociar esa zona al valor y emitir ISO-8601 con su offset. Ej.: `2026-10-28T18:00:00-03:00`. No confundir `numeroFecha` (jornada) con una fecha calendario. Los `timestamp` de error son instantes UTC (`Z`). |
+| Respuestas | Siempre DTOs; nunca entidades JPA, contraseñas ni hashes. `201` con DTO al crear; `200` con DTO al consultar/actualizar; `204` sin cuerpo al borrar. |
 | Errores | Contrato común `ApiErrorResponse` (sección 3). |
-| Autenticación | JWT `Bearer` con vigencia de 8 horas (pendiente de implementación, RF-01). |
-| Prefijo de rutas | Pendiente de acordar por el grupo antes del primer endpoint. |
+| Autenticación | JWT Bearer de 8 horas, firmado con HS256 y secreto seguro por variable de entorno, nunca versionado. BCrypt para contraseñas; su implementación está pendiente. |
+| Expo | URL base configurable por entorno/dispositivo; `localhost` del teléfono no es el servidor. No publicar el secreto JWT en la app ni en variables públicas de Expo. |
+
+La conversión de `fechaHoraInicio` se aplica antes de comparar los inicios para RN-01/RN-02; dos horas exactas de separación son válidas. Esta convención no modifica el tipo `TIMESTAMP` del SQL.
 
 ## 2. Autenticación y permisos
 
 - Los endpoints públicos no requieren token.
-- Los endpoints protegidos esperan `Authorization: Bearer <token>`.
+- Los endpoints protegidos esperan `Authorization: Bearer <token>`; nunca se envía el secreto de firma al cliente.
 - Sin token o con token inválido/expirado: **HTTP 401**.
 - Con token válido pero rol insuficiente: **HTTP 403**.
 - Roles: `ADMIN` y `DELEGADO`. Un usuario inactivo no puede autenticarse (RF-01, RN-09).
+- Los 401/403 originados por Spring Security deberán usar el cuerpo de la sección 3. **Todavía no están implementados**; dependerán de la configuración de seguridad de Franco, no de `@RestControllerAdvice` por sí solo.
 
 ### Matriz de permisos
 
@@ -40,7 +46,7 @@ Documento vivo del contrato HTTP del backend. **Estado actual: base compartida, 
 
 ## 3. Formato de error (implementado para errores de Spring MVC)
 
-Este contrato está implementado actualmente para los errores manejados por Spring MVC (validación, cuerpo mal formado, 404, 405, 415 y errores inesperados). Los **401/403 de Spring Security** y el **409 por violaciones de integridad** todavía están pendientes de implementación (ver T-03 y T-04 en `PREGUNTAS_PENDIENTES.md`); cuando se agreguen, deberán usar este mismo cuerpo.
+El cuerpo común está implementado actualmente para errores manejados por Spring MVC (validación de cuerpo, JSON mal formado, 404, 405 y fallos inesperados). La prueba específica de 415 sigue pendiente. Los **401/403 de Spring Security** y el **409 por conflictos de integridad o de negocio** son parte del contrato aprobado, **pero todavía no están implementados** (ver `PREGUNTAS_PENDIENTES.md`); cuando se agreguen, deben usar el mismo cuerpo.
 
 El formato definido es:
 
@@ -51,7 +57,7 @@ El formato definido es:
   "timestamp": "2026-10-28T12:00:00Z",
   "path": "/ruta/solicitada",
   "validationErrors": [
-    { "field": "name", "message": "no debe estar vacío" }
+    { "field": "nombre", "message": "no debe estar vacío" }
   ]
 }
 ```
@@ -68,48 +74,215 @@ El formato definido es:
 
 | Código | Uso |
 |---|---|
-| 400 | Cuerpo mal formado o validación fallida. |
-| 401 | Falta autenticación o el token no es válido. |
+| 400 | JSON/ID/parámetro inválido o validación de entrada fallida. |
+| 401 | Credenciales incorrectas, token ausente, inválido o expirado en una operación protegida. No indicar qué credencial falló. |
 | 403 | El usuario autenticado no tiene el rol requerido. |
-| 404 | Recurso inexistente. |
+| 404 | ID de recurso inexistente. |
 | 405 | Método HTTP no admitido. |
-| 409 | Conflicto de datos (pendiente de implementar para violaciones de integridad). |
+| 409 | Conflicto de unicidad, de estado o de una regla de negocio. Pendiente de implementar por los módulos y para violaciones de integridad. |
 | 415 | `Content-Type` no admitido. |
 | 500 | Error interno; la traza queda en el log del servidor, nunca en la respuesta. |
 
-Los errores inesperados se registran con `log.error` antes de devolver un 500 genérico. Cuando se incorpore Spring Security, sus puntos de entrada de autenticación y autorización deben devolver este mismo contrato JSON.
+Los errores inesperados se registran en el servidor antes de devolver un 500 genérico. Las validaciones y mensajes nunca deben incluir contraseñas, hashes, tokens, valores rechazados ni trazas. Los filtros de seguridad deberán producir esta respuesta para 401/403; el manejo MVC no los cubre por sí mismo. En las secciones siguientes, 400/401/403/404/409 indican el **comportamiento a implementar**, no endpoints ya probados.
 
-## 4. Endpoints
+## 4. Franco (A): autenticación y usuarios — RF-01, RF-02
 
-**No hay endpoints implementados todavía.** Esta tabla se completa a medida que cada módulo se integra:
+| Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
+|---|---|---|---|---|
+| `POST /api/auth/login` | Público | `LoginRequest`: `username` y `password` obligatorios. | `200 LoginResponse`: `token`, `nombreCompleto`, `rol`. | `400` cuerpo inválido; `401` credenciales incorrectas o usuario inactivo, sin revelar cuál dato falló. |
+| `GET /api/usuarios?activo=true\|false` | ADMIN | Filtro opcional `activo`; sin filtro muestra activos. | `200 UsuarioResponse[]`. | `400` filtro inválido; `401`/`403`. |
+| `GET /api/usuarios/{id}` | ADMIN | ID positivo; permite ver el estado de un usuario inactivo. | `200 UsuarioResponse`. | `400`, `401`, `403`, `404`. |
+| `POST /api/usuarios` | ADMIN | `UsuarioCreateRequest`: `username`, `password`, `nombreCompleto`, `rol`. | `201 UsuarioResponse`. | `400` campos inválidos; `401`/`403`; `409` username repetido. |
+| `PUT /api/usuarios/{id}` | ADMIN | `UsuarioUpdateRequest`: **ambos** `nombreCompleto` y `rol`; no se admite cambiar `username`. | `200 UsuarioResponse`. | `400`, `401`, `403`, `404`; `409` si un admin intenta quitarse ADMIN. |
+| `PATCH /api/usuarios/{id}/password` | ADMIN | `PasswordUpdateRequest`: `password`. | `200 UsuarioResponse`, sin password/hash. | `400` longitud inválida; `401`/`403`/`404`. |
+| `PATCH /api/usuarios/{id}/estado` | ADMIN | `UsuarioEstadoRequest`: `activo` booleano obligatorio. Desactiva o reactiva. | `200 UsuarioResponse`. | `400`, `401`, `403`, `404`; `409` si un admin intenta desactivarse a sí mismo. |
 
-| RF | Recurso | Estado |
-|---|---|---|
-| RF-01 | Inicio de sesión | Pendiente |
-| RF-02 | Usuarios | Pendiente |
-| RF-03 | Equipos | Pendiente |
-| RF-04 | Jugadores | Pendiente |
-| RF-05 | Torneo, canchas, árbitros, equipos y jugadores | Pendiente |
-| RF-06 | Programación de partidos | Pendiente |
-| RF-07 | Estado de partido | Pendiente |
-| RF-08 | Registro de eventos | Pendiente |
-| RF-09 | Corrección de eventos | Pendiente |
-| RF-10 | Consulta de partidos y resultados | Pendiente |
-| RF-11 | Tabla de posiciones | Pendiente |
-| RF-12 | Suspendidos por fecha | Pendiente |
+`UsuarioResponse` contiene `id`, `username`, `nombreCompleto`, `rol`, `activo`, `fechaAlta`; nunca `password`, `passwordHash` ni el hash BCrypt. `username` obligatorio, único e inmutable, máximo 40 caracteres; `password` mínimo 8 caracteres y se almacena solo con BCrypt; `nombreCompleto` obligatorio, máximo 100; `rol` es `ADMIN` o `DELEGADO`. RN-08 se comprueba con la identidad del administrador autenticado. No existe registro público de usuarios ni recuperación de contraseña.
 
-## 5. Contratos a acordar antes de implementar
+Ejemplos (RF-01 y RF-02):
 
-Cada integrante debe proponer en su rama, y acordar con el resto, las rutas, cuerpos, respuestas y errores de su módulo antes de programarlos. Como mínimo:
+```http
+POST /api/auth/login
+Content-Type: application/json
 
-- **A (RF-01, RF-02):** login, datos devueltos junto al token, alta/modificación/baja lógica de usuarios, cambio de contraseña y rol.
-- **B (RF-03, RF-04, RF-05):** catálogo público y CRUD de equipos y jugadores, incluida la forma de listar registros inactivos para poder reactivarlos.
-- **C (RF-06, RF-07):** alta/edición/baja de partidos y transiciones de estado permitidas.
-- **D (RF-08 a RF-12):** eventos, detalle de partido, tabla y suspendidos.
+{"username":"admin","password":"<contraseña>"}
+```
 
-Reglas para todos:
+```json
+{"token":"<jwt>","nombreCompleto":"Administrador de la liga","rol":"ADMIN"}
+```
 
-- No inventar campos ni comportamientos que no estén en `SPEC.md`.
-- Validar siempre en el backend; las validaciones del cliente son complementarias.
-- Documentar en este archivo cada endpoint con método, ruta, permisos, cuerpo, respuesta y errores.
-- Mantener el contrato de error de la sección 3.
+```http
+POST /api/usuarios
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"username":"delegado1","password":"<contraseña-de-8-o-más-caracteres>","nombreCompleto":"Delegado Uno","rol":"DELEGADO"}
+```
+
+```json
+{"id":2,"username":"delegado1","nombreCompleto":"Delegado Uno","rol":"DELEGADO","activo":true,"fechaAlta":"2026-10-28T18:00:00-03:00"}
+```
+
+Para editar se envía `{"nombreCompleto":"Delegado Uno","rol":"DELEGADO"}` completo; para cambiar la contraseña `{"password":"<contraseña-nueva>"}`; para reactivar `{"activo":true}`. Los cuerpos de respuesta de estos cambios tienen la forma de `UsuarioResponse`.
+
+## 5. Marcos (B): catálogo, equipos y jugadores — RF-03, RF-04, RF-05
+
+| Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
+|---|---|---|---|---|
+| `GET /api/torneos` | Público | Sin cuerpo. | `200 TorneoResponse[]`, solo activos. | Errores HTTP generales. |
+| `GET /api/canchas` | Público | Sin cuerpo. | `200 CanchaResponse[]`, solo activas. | Errores HTTP generales. |
+| `GET /api/arbitros` | Público | Sin cuerpo. | `200 ArbitroResponse[]`, solo activos. | Errores HTTP generales. |
+| `GET /api/torneos/{torneoId}/equipos` | Público | ID de torneo. | `200 EquipoResponse[]`, solo activos. | `400` ID inválido; `404` torneo inexistente. |
+| `GET /api/equipos/{equipoId}/jugadores` | Público | ID de equipo. | `200 JugadorResponse[]`, solo activos. | `400` ID inválido; `404` equipo inexistente. |
+| `POST /api/torneos/{torneoId}/equipos` | ADMIN | `EquipoCreateRequest`: `nombre`, `barrio` opcional; `torneoId` procede de la ruta. | `201 EquipoResponse`. | `400` entrada inválida; `401`/`403`; `404` torneo inexistente; `409` nombre repetido en el torneo. |
+| `PUT /api/equipos/{id}` | ADMIN | `EquipoUpdateRequest`: `nombre` obligatorio y `barrio` incluido, que puede ser `null`; no cambia de torneo. | `200 EquipoResponse`. | `400`, `401`, `403`, `404`, `409` por nombre repetido. |
+| `DELETE /api/equipos/{id}` | ADMIN | Sin cuerpo; **baja lógica** (`activo=false`). | `204` sin cuerpo. | `400`, `401`, `403`, `404`. |
+| `POST /api/equipos/{equipoId}/jugadores` | ADMIN | `JugadorCreateRequest`: `nombre`, `apellido`, `dni`, `numeroCamiseta` opcional. | `201 JugadorResponse`. | `400`, `401`, `403`, `404` equipo inexistente, `409` DNI repetido. |
+| `PUT /api/jugadores/{id}` | ADMIN | `JugadorUpdateRequest`: `nombre`, `apellido`, `dni`, `numeroCamiseta` (puede ser `null`); **no** recibe `equipoId`. | `200 JugadorResponse`. | `400`, `401`, `403`, `404`, `409` DNI repetido. |
+| `DELETE /api/jugadores/{id}` | ADMIN | Sin cuerpo; **baja lógica** (`activo=false`). | `204` sin cuerpo. | `400`, `401`, `403`, `404`. |
+
+`TorneoResponse`: `id`, `nombre`, `anio`, `activo`. `CanchaResponse`: `id`, `nombre`, `direccion`, `activo`. `ArbitroResponse`: `id`, `nombre`, `apellido`, `dni`, `activo`. Son datos precargados, **sin endpoints de escritura**. `EquipoResponse`: `id`, `torneoId`, `nombre`, `barrio`, `activo`; nombre obligatorio, máximo 80, único dentro del torneo; barrio opcional, máximo 80. `JugadorResponse`: `id`, `equipoId`, `nombre`, `apellido`, `dni`, `numeroCamiseta`, `activo`; nombre/apellido obligatorios, máximo 60 cada uno; DNI obligatorio, único global, máximo 10 caracteres (se trata como cadena, no se impone formato numérico adicional). `numeroCamiseta` es `null` u opcional, y cuando se informa va de 1 a 99 (`@Min(1)`, `@Max(99)` y `CHECK` SQL); **no se exige unicidad de camiseta**. El equipo del jugador existente es inmutable. Equipo desactivado no puede elegirse para nuevos partidos. No se incorporan endpoints de reactivación de equipos o jugadores. La baja lógica no borra el historial; P-06 deja abierta la consecuencia sobre partidos programados, por lo que **no se define aquí una cancelación automática**.
+
+Ejemplos (RF-03 a RF-05):
+
+```http
+POST /api/torneos/1/equipos
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"nombre":"Barrio Norte","barrio":null}
+```
+
+```json
+{"id":7,"torneoId":1,"nombre":"Barrio Norte","barrio":null,"activo":true}
+```
+
+```http
+POST /api/equipos/7/jugadores
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"nombre":"Juan","apellido":"Pérez","dni":"30111222","numeroCamiseta":null}
+```
+
+```json
+{"id":15,"equipoId":7,"nombre":"Juan","apellido":"Pérez","dni":"30111222","numeroCamiseta":null,"activo":true}
+```
+
+Un `PUT /api/jugadores/15` vuelve a incluir los cuatro campos editables; `DELETE /api/jugadores/15` responde `204`. Ejemplo de lectura pública: `GET /api/torneos/1/equipos` → `[{"id":7,"torneoId":1,"nombre":"Barrio Norte","barrio":null,"activo":true}]`. Los ejemplos ilustran el formato, no son datos precargados ni pruebas ejecutadas.
+
+## 6. José (C): programación, estados y listado — RF-06, RF-07, RF-10 (listado)
+
+| Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
+|---|---|---|---|---|
+| `POST /api/partidos` | ADMIN | `PartidoWriteRequest`: `torneoId`, `numeroFecha`, `equipoLocalId`, `equipoVisitanteId`, `canchaId`, `arbitroId`, `fechaHoraInicio`. No recibe estado ni marcador. | `201 PartidoResponse`, nace `PROGRAMADO`. | `400` formato/rango; `401`/`403`; `404` FK inexistente; `409` equipos/torneo/actividad, equipo duplicado en fecha o conflictos RN-01/02. |
+| `PUT /api/partidos/{id}` | ADMIN | `PartidoWriteRequest` **completo**; solo en `PROGRAMADO`. | `200 PartidoResponse`. | `400`, `401`, `403`, `404`, `409` estado/reglas/conflictos. |
+| `DELETE /api/partidos/{id}` | ADMIN | Sin cuerpo; borrado físico **solo** si `PROGRAMADO`. | `204` sin cuerpo. | `400`, `401`, `403`, `404`, `409` estado incorrecto. |
+| `PATCH /api/partidos/{id}/estado` | DELEGADO o ADMIN | `PartidoEstadoRequest`: `estado` obligatorio. | `200 PartidoResponse` con el nuevo estado. | `400` estado inválido; `401`/`403`/`404`; `409` transición prohibida o RN-07. |
+| `GET /api/torneos/{torneoId}/partidos?numeroFecha=N` | Público | `torneoId` positivo y `numeroFecha` obligatorio, desde 1. | `200 PartidoListadoResponse[]` con resultado derivado. | `400` filtro inválido/faltante; `404` torneo inexistente. |
+
+`PartidoResponse` contiene `id`, `torneoId`, `numeroFecha`, `equipoLocalId`, `equipoVisitanteId`, `canchaId`, `arbitroId`, `fechaHoraInicio`, `estado`. `PartidoListadoResponse` agrega a esos campos `resultado: {golesLocal, golesVisitante}`; la misma estructura `resultado` se usa en el detalle de Mateo. IDs existentes y positivos; jornada ≥1; equipos distintos, del mismo torneo y no desactivados para partido nuevo; cancha y árbitro activos; un equipo no juega dos veces en una misma jornada. Cancha y árbitro no pueden estar asignados a otro partido **no suspendido** con inicios separados por menos de dos horas (RN-01/02). Ver sección 1 para comparar instantes con offset.
+
+Transiciones exclusivas: `PROGRAMADO` → `EN_JUEGO` o `SUSPENDIDO`; `EN_JUEGO` → `FINALIZADO` o `SUSPENDIDO`. `FINALIZADO` y `SUSPENDIDO` son finales. Al **iniciar** un partido de la jornada N, RN-07 impide el cambio si algún partido de N−1 sigue `PROGRAMADO` o `EN_JUEGO`; se permite programar fechas futuras con anticipación. Un suspendido no se reprograma: se crea otro partido conforme a RF-06.
+
+Ejemplos (RF-06, RF-07 y listado RF-10):
+
+```http
+POST /api/partidos
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"torneoId":1,"numeroFecha":1,"equipoLocalId":7,"equipoVisitanteId":8,"canchaId":1,"arbitroId":1,"fechaHoraInicio":"2026-10-28T18:00:00-03:00"}
+```
+
+```json
+{"id":20,"torneoId":1,"numeroFecha":1,"equipoLocalId":7,"equipoVisitanteId":8,"canchaId":1,"arbitroId":1,"fechaHoraInicio":"2026-10-28T18:00:00-03:00","estado":"PROGRAMADO"}
+```
+
+`PUT /api/partidos/20` requiere nuevamente el cuerpo completo anterior. `PATCH /api/partidos/20/estado` recibe `{"estado":"EN_JUEGO"}` y responde el mismo `PartidoResponse` con `estado` actualizado. La lectura pública por jornada usa el cálculo de Mateo:
+
+```http
+GET /api/torneos/1/partidos?numeroFecha=1
+```
+
+```json
+[{"id":20,"torneoId":1,"numeroFecha":1,"equipoLocalId":7,"equipoVisitanteId":8,"canchaId":1,"arbitroId":1,"fechaHoraInicio":"2026-10-28T18:00:00-03:00","estado":"EN_JUEGO","resultado":{"golesLocal":0,"golesVisitante":0}}]
+```
+
+## 7. Mateo (D): eventos, detalle, posiciones y suspendidos — RF-08 a RF-12
+
+| Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
+|---|---|---|---|---|
+| `POST /api/partidos/{partidoId}/eventos` | DELEGADO o ADMIN | `EventoCreateRequest`: `jugadorId`, `tipo`, `minuto`. | `201 EventoResponse`. | `400` tipo/minuto; `401`/`403`; `404` partido/jugador inexistente; `409` estado, jugador ajeno/inactivo o suspendido. |
+| `DELETE /api/partidos/{partidoId}/eventos/{eventoId}` | DELEGADO o ADMIN | Sin cuerpo; solo en `EN_JUEGO` y evento de ese partido. | `204` sin cuerpo. | `400`, `401`, `403`, `404` IDs/evento ajeno, `409` estado incorrecto. |
+| `GET /api/partidos/{id}` | Público | ID de partido positivo. | `200 PartidoDetalleResponse` con resultado y eventos. | `400` ID inválido; `404` inexistente. |
+| `GET /api/torneos/{torneoId}/tabla` | Público | ID de torneo positivo. | `200 PosicionResponse[]` ordenado según RF-11. | `400`, `404` torneo inexistente. |
+| `GET /api/torneos/{torneoId}/suspendidos?numeroFecha=N` | Público | Torneo positivo; jornada obligatoria desde 1. | `200 SuspendidoResponse[]`. | `400` filtro inválido/faltante; `404` torneo inexistente. |
+
+`EventoResponse`: `id`, `partidoId`, `jugadorId`, `tipo`, `minuto`; `tipo` solo `GOL`, `AMARILLA` o `ROJA`; minuto entero 1–120. Solo se agrega/borra mientras el partido está `EN_JUEGO`. El jugador debe estar activo, ser del equipo local o visitante y no estar suspendido en la jornada del partido (RN-03/04). `PartidoDetalleResponse` contiene los mismos campos de `PartidoResponse` de José, más `resultado: {golesLocal, golesVisitante}` y `eventos: EventoResponse[]`. No cargar resultado manualmente; sin goles es 0–0.
+
+`PosicionResponse`: `equipoId`, `equipo` (nombre), `pj`, `pg`, `pe`, `pp`, `gf`, `gc`, `dg`, `pts`. Contar solo partidos `FINALIZADO`, victoria 3 puntos, empate 1, derrota 0; incluir equipos sin partidos con valores cero; ordenar por más PTS, mayor DG, más GF y nombre alfabético (`SPEC.md` §7). `SuspendidoResponse`: `jugadorId`, `equipoId`, `numeroFecha` (jornada consultada), `motivo` (`ROJA` o `DOBLE_AMARILLA`) y `numeroFechaSancion` (jornada N−1 que produjo la sanción, para satisfacer la referencia a «fecha de sanción» de RF-12). `numeroFechaSancion` es una **jornada**, no un instante calendario: el esquema no registra el instante de cada tarjeta. Si la interpretación solicitada por el cliente fuera una fecha calendario, consultarlo antes de inventar un timestamp de sanción.
+
+La suspensión solo proviene de partidos `FINALIZADO` de N−1 por una roja o dos amarillas **en el mismo partido**; no se acumulan amarillas entre partidos ni se crea tabla de suspensiones. Si no existe una fecha posterior programada, no se traslada una sanción a otra competición.
+
+Ejemplos (RF-08 a RF-12):
+
+```http
+POST /api/partidos/20/eventos
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"jugadorId":15,"tipo":"GOL","minuto":35}
+```
+
+```json
+{"id":30,"partidoId":20,"jugadorId":15,"tipo":"GOL","minuto":35}
+```
+
+`DELETE /api/partidos/20/eventos/30` responde `204` mientras esté en juego. El detalle público comparte el marcador con el listado:
+
+```http
+GET /api/partidos/20
+```
+
+```json
+{"id":20,"torneoId":1,"numeroFecha":1,"equipoLocalId":7,"equipoVisitanteId":8,"canchaId":1,"arbitroId":1,"fechaHoraInicio":"2026-10-28T18:00:00-03:00","estado":"EN_JUEGO","resultado":{"golesLocal":1,"golesVisitante":0},"eventos":[{"id":30,"partidoId":20,"jugadorId":15,"tipo":"GOL","minuto":35}]}
+```
+
+```http
+GET /api/torneos/1/tabla
+```
+
+```json
+[{"equipoId":7,"equipo":"Barrio Norte","pj":1,"pg":1,"pe":0,"pp":0,"gf":1,"gc":0,"dg":1,"pts":3}]
+```
+
+El ejemplo de tabla supone un partido **FINALIZADO**; un partido `EN_JUEGO` como el del ejemplo de detalle aún no suma puntos. El ejemplo de tabla solo ilustra la forma de una fila, no pretende representar todas las filas del torneo.
+
+```http
+GET /api/torneos/1/suspendidos?numeroFecha=2
+```
+
+```json
+[{"jugadorId":15,"equipoId":7,"numeroFecha":2,"motivo":"ROJA","numeroFechaSancion":1}]
+```
+
+## 8. Interfaz interna compartida y dependencias
+
+**Mateo es el único responsable del cálculo de marcador** (RN-06): contrato del servicio interno `MarcadorService.calcular(Integer partidoId) → Marcador(int golesLocal, int golesVisitante)`. Cuenta eventos `GOL` y asigna cada uno al equipo local o visitante por el equipo del jugador, sin goles en contra; sin goles devuelve `0,0`. La firma describe la interfaz a compartir entre C y D, **no un endpoint ni una clase existente**. José la usa para `PartidoListadoResponse`; Mateo la usa para `PartidoDetalleResponse` y la tabla, sin duplicar lógica. José y Mateo coordinan el paquete y la disponibilidad del servicio antes de integrar sus PRs.
+
+1. **Franco → todos:** JWT/roles y cuerpos 401/403 deben permitir las consultas públicas sin token y proteger escrituras según sección 2.
+2. **Marcos → José y Mateo:** IDs, actividad y torneo de equipos/jugadores; canchas y árbitros de solo lectura. Los DTOs no reemplazan las validaciones en backend.
+3. **José → Mateo:** modelo/estado de partidos y la consulta por jornada; RN-07 se valida al iniciar, no al programar.
+4. **Mateo → José:** cálculo único de marcador y objeto `resultado` idéntico en listado y detalle; disciplina alimenta la validación de eventos.
+5. **Expo → backend:** cliente con URL base configurable, rutas y JSON de este documento; los errores de seguridad aún requieren implementación. No asumir que `localhost` en un teléfono apunta al servidor.
+
+## 9. Orden de implementación recomendado
+
+1. Franco integra la seguridad con consultas públicas y 401/403 uniformes; Marcos prepara Expo y el catálogo en paralelo, cada uno en sus ramas de tarea.
+2. Marcos publica los contratos/DTOs de equipos, jugadores, canchas y árbitros; José implementa programación y estados a partir de ellos. Mateo prepara pruebas de RN-03/RN-06 y el contrato interno de marcador.
+3. Mateo implementa eventos, marcador, detalle, tabla y suspendidos; José conecta el listado con su servicio, sin segundo cálculo.
+4. Cada integrante integra sus pantallas y pruebas de backend/Expo; documenta en este archivo cualquier ajuste **acordado** antes de cambiar el contrato de otro módulo. Los PRs de frontend y backend se revisan por separado.
+
+Los módulos todavía no están implementados por el hecho de figurar aquí. No agregar pagos, alineaciones, cambios, penales, recuperación de contraseña ni CRUD de torneos/canchas/árbitros.
