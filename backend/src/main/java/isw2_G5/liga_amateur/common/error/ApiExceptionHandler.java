@@ -69,6 +69,34 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Traduce un recurso inexistente al cuerpo de error común con HTTP 404.
+     *
+     * @param exception excepción lanzada por el módulo que no encontró el recurso
+     * @param request solicitud que originó el error
+     * @return respuesta HTTP 404 con el mensaje del módulo
+     */
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecursoNoEncontrado(
+            RecursoNoEncontradoException exception, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(response(HttpStatus.NOT_FOUND, exception.getMessage(), request, List.of()));
+    }
+
+    /**
+     * Traduce una validación de solicitud al cuerpo de error común con HTTP 400.
+     *
+     * @param exception excepción lanzada por la validación del módulo
+     * @param request solicitud que originó el error
+     * @return respuesta HTTP 400 con el mensaje del módulo
+     */
+    @ExceptionHandler(SolicitudInvalidaException.class)
+    public ResponseEntity<ApiErrorResponse> handleSolicitudInvalida(
+            SolicitudInvalidaException exception, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(response(HttpStatus.BAD_REQUEST, exception.getMessage(), request, List.of()));
+    }
+
+    /**
      * Oculta excepciones no previstas para no devolver trazas o mensajes internos al cliente.
      * La excepción completa queda registrada en el log del servidor para poder diagnosticarla.
      *
