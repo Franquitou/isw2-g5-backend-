@@ -131,8 +131,6 @@ Para editar se envía `{"nombreCompleto":"Delegado Uno","rol":"DELEGADO"}` compl
 | Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
 |---|---|---|---|---|
 | `GET /api/torneos` | Público | Sin cuerpo. | `200 TorneoResponse[]`, solo activos. | Errores HTTP generales. |
-| `GET /api/canchas` | Público | Sin cuerpo. | `200 CanchaResponse[]`, solo activas. | Errores HTTP generales. |
-| `GET /api/arbitros` | Público | Sin cuerpo. | `200 ArbitroResponse[]`, solo activos. | Errores HTTP generales. |
 | `GET /api/torneos/{torneoId}/equipos` | Público | ID de torneo. | `200 EquipoResponse[]`, solo activos. | `400` ID inválido; `404` torneo inexistente. |
 | `GET /api/equipos/{equipoId}/jugadores` | Público | ID de equipo. | `200 JugadorResponse[]`, solo activos. | `400` ID inválido; `404` equipo inexistente. |
 | `POST /api/torneos/{torneoId}/equipos` | ADMIN | `EquipoCreateRequest`: `nombre`, `barrio` opcional; `torneoId` procede de la ruta. | `201 EquipoResponse`. | `400` entrada inválida; `401`/`403`; `404` torneo inexistente; `409` nombre repetido en el torneo. |
@@ -142,7 +140,7 @@ Para editar se envía `{"nombreCompleto":"Delegado Uno","rol":"DELEGADO"}` compl
 | `PUT /api/jugadores/{id}` | ADMIN | `JugadorUpdateRequest`: `nombre`, `apellido`, `dni`, `numeroCamiseta` (puede ser `null`); **no** recibe `equipoId`. | `200 JugadorResponse`. | `400`, `401`, `403`, `404`, `409` DNI repetido. |
 | `DELETE /api/jugadores/{id}` | ADMIN | Sin cuerpo; **baja lógica** (`activo=false`). | `204` sin cuerpo. | `400`, `401`, `403`, `404`. |
 
-`TorneoResponse`: `id`, `nombre`, `anio`, `activo`. `CanchaResponse`: `id`, `nombre`, `direccion`, `activo`. `ArbitroResponse`: `id`, `nombre`, `apellido`, `dni`, `activo`. Son datos precargados, **sin endpoints de escritura**. `EquipoResponse`: `id`, `torneoId`, `nombre`, `barrio`, `activo`; nombre obligatorio, máximo 80, único dentro del torneo; barrio opcional, máximo 80. `JugadorResponse`: `id`, `equipoId`, `nombre`, `apellido`, `dni`, `numeroCamiseta`, `activo`; nombre/apellido obligatorios, máximo 60 cada uno; DNI obligatorio, único global, máximo 10 caracteres (se trata como cadena, no se impone formato numérico adicional). `numeroCamiseta` es `null` u opcional, y cuando se informa va de 1 a 99 (`@Min(1)`, `@Max(99)` y `CHECK` SQL); **no se exige unicidad de camiseta**. El equipo del jugador existente es inmutable. Equipo desactivado no puede elegirse para nuevos partidos. No se incorporan endpoints de reactivación de equipos o jugadores. La baja lógica no borra el historial; P-06 deja abierta la consecuencia sobre partidos programados, por lo que **no se define aquí una cancelación automática**.
+`TorneoResponse`: `id`, `nombre`, `anio`, `activo`. Es un dato precargado, **sin endpoints de escritura**. Las consultas de canchas y árbitros pertenecen a José (sección 6). `EquipoResponse`: `id`, `torneoId`, `nombre`, `barrio`, `activo`; nombre obligatorio, máximo 80, único dentro del torneo; barrio opcional, máximo 80. `JugadorResponse`: `id`, `equipoId`, `nombre`, `apellido`, `dni`, `numeroCamiseta`, `activo`; nombre/apellido obligatorios, máximo 60 cada uno; DNI obligatorio, único global, máximo 10 caracteres (se trata como cadena, no se impone formato numérico adicional). `numeroCamiseta` es `null` u opcional, y cuando se informa va de 1 a 99 (`@Min(1)`, `@Max(99)` y `CHECK` SQL); **no se exige unicidad de camiseta**. El equipo del jugador existente es inmutable. Equipo desactivado no puede elegirse para nuevos partidos. No se incorporan endpoints de reactivación de equipos o jugadores. La baja lógica no borra el historial; P-06 deja abierta la consecuencia sobre partidos programados, por lo que **no se define aquí una cancelación automática**.
 
 Ejemplos (RF-03 a RF-05):
 
@@ -172,7 +170,26 @@ Content-Type: application/json
 
 Un `PUT /api/jugadores/15` vuelve a incluir los cuatro campos editables; `DELETE /api/jugadores/15` responde `204`. Ejemplo de lectura pública: `GET /api/torneos/1/equipos` → `[{"id":7,"torneoId":1,"nombre":"Barrio Norte","barrio":null,"activo":true}]`. Los ejemplos ilustran el formato, no son datos precargados ni pruebas ejecutadas.
 
-## 6. José (C): programación, estados y listado — RF-06, RF-07, RF-10 (listado)
+## 6. José (C): canchas, árbitros, programación, estados y listado — RF-05 (canchas y árbitros), RF-06, RF-07, RF-10 (listado)
+
+### 6.1 Canchas y árbitros (implementado)
+
+| Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
+|---|---|---|---|---|
+| `GET /api/canchas` | Público | Sin cuerpo. | `200 CanchaResponse[]`, solo activas, ordenadas por `nombre`. | `405` ante métodos de escritura; errores HTTP generales. |
+| `GET /api/arbitros` | Público | Sin cuerpo. | `200 ArbitroResponse[]`, solo activos, ordenados por `apellido` y `nombre`. | `405` ante métodos de escritura; errores HTTP generales. |
+
+`CanchaResponse`: `id`, `nombre`, `direccion` (puede ser `null`), `activo`. `ArbitroResponse`: `id`, `nombre`, `apellido`, `dni` (cadena), `activo`. Son datos precargados por `data.sql`, **sin endpoints de escritura**. El filtro de activos se resuelve en la consulta a la base. Implementado en el paquete `isw2_G5.liga_amateur.catalogo`; las entidades `Cancha` y `Arbitro` son las que usará la programación de partidos.
+
+```http
+GET /api/canchas
+```
+
+```json
+[{"id":1,"nombre":"Cancha Municipal Norte","direccion":"Av. Blas Parera 7400","activo":true},{"id":3,"nombre":"Complejo El Alero","direccion":"Pje. Los Ceibos 1350","activo":true},{"id":2,"nombre":"Predio La Costanera","direccion":"Av. Almirante Brown 5200","activo":true}]
+```
+
+### 6.2 Programación, estados y listado (pendiente)
 
 | Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
 |---|---|---|---|---|
@@ -273,7 +290,7 @@ GET /api/torneos/1/suspendidos?numeroFecha=2
 **Mateo es el único responsable del cálculo de marcador** (RN-06): contrato del servicio interno `MarcadorService.calcular(Integer partidoId) → Marcador(int golesLocal, int golesVisitante)`. Cuenta eventos `GOL` y asigna cada uno al equipo local o visitante por el equipo del jugador, sin goles en contra; sin goles devuelve `0,0`. La firma describe la interfaz a compartir entre C y D, **no un endpoint ni una clase existente**. José la usa para `PartidoListadoResponse`; Mateo la usa para `PartidoDetalleResponse` y la tabla, sin duplicar lógica. José y Mateo coordinan el paquete y la disponibilidad del servicio antes de integrar sus PRs.
 
 1. **Franco → todos:** JWT/roles y cuerpos 401/403 deben permitir las consultas públicas sin token y proteger escrituras según sección 2.
-2. **Marcos → José y Mateo:** IDs, actividad y torneo de equipos/jugadores; canchas y árbitros de solo lectura. Los DTOs no reemplazan las validaciones en backend.
+2. **Marcos → José y Mateo:** IDs, actividad y torneo de equipos/jugadores. **José** provee las entidades y consultas de solo lectura de canchas y árbitros. Los DTOs no reemplazan las validaciones en backend.
 3. **José → Mateo:** modelo/estado de partidos y la consulta por jornada; RN-07 se valida al iniciar, no al programar.
 4. **Mateo → José:** cálculo único de marcador y objeto `resultado` idéntico en listado y detalle; disciplina alimenta la validación de eventos.
 5. **Expo → backend:** cliente con URL base configurable, rutas y JSON de este documento; los errores de seguridad aún requieren implementación. No asumir que `localhost` en un teléfono apunta al servidor.
@@ -281,7 +298,7 @@ GET /api/torneos/1/suspendidos?numeroFecha=2
 ## 9. Orden de implementación recomendado
 
 1. Franco integra la seguridad con consultas públicas y 401/403 uniformes; Marcos prepara Expo y el catálogo en paralelo, cada uno en sus ramas de tarea.
-2. Marcos publica los contratos/DTOs de equipos, jugadores, canchas y árbitros; José implementa programación y estados a partir de ellos. Mateo prepara pruebas de RN-03/RN-06 y el contrato interno de marcador.
+2. Marcos publica los contratos/DTOs de equipos y jugadores; José publica canchas y árbitros e implementa programación y estados a partir de ellos. Mateo prepara pruebas de RN-03/RN-06 y el contrato interno de marcador.
 3. Mateo implementa eventos, marcador, detalle, tabla y suspendidos; José conecta el listado con su servicio, sin segundo cálculo.
 4. Cada integrante integra sus pantallas y pruebas de backend/Expo; documenta en este archivo cualquier ajuste **acordado** antes de cambiar el contrato de otro módulo. Los PRs de frontend y backend se revisan por separado.
 
