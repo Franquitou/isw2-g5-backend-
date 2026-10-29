@@ -1,6 +1,6 @@
 # Liga Amateur Santafesina — backend
 
-API del proyecto universitario Liga Amateur Santafesina. Esta rama prepara únicamente la base compartida: arranque Spring Boot, scripts SQL originales y formato común de errores. Todavía no hay endpoints funcionales, autenticación ni módulos de negocio.
+API del proyecto universitario Liga Amateur Santafesina. Esta rama prepara únicamente la base compartida: arranque Spring Boot, scripts SQL originales y formato común de errores. Todavía no hay autenticación ni módulos de negocio; están disponibles las consultas públicas de canchas y árbitros (`GET /api/canchas` y `GET /api/arbitros`).
 
 ## Tecnologías y requisitos
 
@@ -50,6 +50,12 @@ El paquete Java raíz existente es `isw2_G5.liga_amateur` bajo `backend/src/main
 ```text
 isw2_G5.liga_amateur/
 ├── LigaAmateurApplication.java
+├── catalogo/              # canchas y árbitros (José)
+│   ├── controller/CatalogoController.java
+│   ├── dto/CanchaResponse.java, ArbitroResponse.java
+│   ├── entity/Cancha.java, Arbitro.java
+│   ├── repository/CanchaRepository.java, ArbitroRepository.java
+│   └── service/CatalogoService.java
 └── common/
     ├── dto/ApiErrorResponse.java
     └── error/ApiExceptionHandler.java
@@ -65,6 +71,12 @@ Las pruebas aisladas del manejador de errores usan MockMvc sin iniciar el contex
 
 ```powershell
 .\mvnw.cmd -Dtest=ApiExceptionHandlerTest test
+```
+
+Las pruebas de canchas y árbitros tampoco tocan `./data/liga_amateur`: las de controller y service usan dobles de prueba, y `CatalogoRepositoryTest` usa `@DataJpaTest`, que ejecuta `schema.sql` y `data.sql` sobre una H2 en memoria y valida las entidades contra el esquema (`ddl-auto=validate`):
+
+```powershell
+.\mvnw.cmd -Dtest="Catalogo*Test" test
 ```
 
 El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H2: **no ejecutarlo sin autorización y sin prever la pérdida de datos**. Documentar los comandos y resultados efectivamente ejecutados en cada PR.
