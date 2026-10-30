@@ -243,6 +243,7 @@ GET /api/torneos/1/partidos?numeroFecha=1
 
 La suspensión solo proviene de partidos `FINALIZADO` de N−1 por una roja o dos amarillas **en el mismo partido**; no se acumulan amarillas entre partidos ni se crea tabla de suspensiones. Si no existe una fecha posterior programada, no se traslada una sanción a otra competición.
 
+Estado de implementación (módulo D): RF-08, RF-09, detalle de RF-10, RF-11 y RF-12 están implementados en la rama feature/eventos-resultados. Decisiones que no modifican el contrato: (1) orden de validación al registrar un evento: ID inválido (400), partido inexistente (404), jugador inexistente (404), partido fuera de EN_JUEGO (409), jugador inactivo (409), jugador ajeno a los dos equipos (409) y jugador suspendido en la jornada (409); (2) al eliminar, un evento inexistente o de otro partido devuelve 404 antes de evaluar el estado del partido; (3) si un jugador tiene roja y dos amarillas en el mismo partido, el motivo informado es ROJA; (4) la tabla incluye los equipos activos del torneo, más los dados de baja que tengan partidos FINALIZADO, para no alterar el historial (RN-09); (5) GET /api/torneos/{id}/suspendidos?numeroFecha=1 devuelve lista vacía, porque no existe jornada 0. Para listados, MarcadorService ofrece además calcularPorPartido(Collection<Partido>), que calcula varios marcadores con una sola consulta.
 Ejemplos (RF-08 a RF-12):
 
 ```http
