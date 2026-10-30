@@ -1,6 +1,6 @@
 # API — Liga Amateur Santafesina
 
-Contrato REST acordado por Franco (A) y Marcos (B) para los cuatro módulos. **Es una definición de interfaz, no una declaración de implementación:** los endpoints de RF-01 a RF-12 siguen pendientes hasta que sus PRs los incorporen y prueben. José (C) y Mateo (D) implementan sus secciones respetando este contrato. Actualizar este archivo en el mismo PR que cambie una interfaz.
+Contrato REST acordado por Franco (A) y Marcos (B) para los cuatro módulos. Los endpoints se implementan progresivamente en PRs separados; **este documento define interfaces, no acredita por sí mismo que funcionen**. Esta rama añade RF-02; consultar cada PR integrado para conocer el estado real de los demás módulos. Actualizar este archivo en el mismo PR que cambie una interfaz.
 
 Fuente funcional: `liga_amateur_opencode/SPEC.md` y el PDF del cliente (ambos en la raíz del espacio de trabajo); estructura exacta: `backend/src/main/resources/schema.sql` (ruta relativa a la raíz del repositorio backend). Las aclaraciones acordadas constan en `docs/PREGUNTAS_PENDIENTES.md`. No crear tablas ni operaciones de negocio fuera de ese alcance.
 
@@ -13,7 +13,7 @@ Fuente funcional: `liga_amateur_opencode/SPEC.md` y el PDF del cliente (ambos en
 | Fechas y horas | ISO-8601 con offset para `fechaHoraInicio` y `fechaAlta`. Interpretar el `TIMESTAMP` sin zona de H2 en `America/Argentina/Buenos_Aires`: al recibir un valor con offset, convertir el instante a esa zona y guardar la fecha/hora local; al leer, asociar esa zona al valor y emitir ISO-8601 con su offset. Ej.: `2026-10-28T18:00:00-03:00`. No confundir `numeroFecha` (jornada) con una fecha calendario. Los `timestamp` de error son instantes UTC (`Z`). |
 | Respuestas | Siempre DTOs; nunca entidades JPA, contraseñas ni hashes. `201` con DTO al crear; `200` con DTO al consultar/actualizar; `204` sin cuerpo al borrar. |
 | Errores | Contrato común `ApiErrorResponse` (sección 3). |
-| Autenticación | JWT Bearer de 8 horas, firmado con HS256 y secreto seguro por variable de entorno, nunca versionado. BCrypt para contraseñas; su implementación está pendiente. |
+| Autenticación | JWT Bearer de 8 horas, firmado con HS256 y secreto seguro por variable de entorno, nunca versionado. BCrypt y autenticación RF-01 ya integrados en `main`. |
 | Expo | URL base configurable por entorno/dispositivo; `localhost` del teléfono no es el servidor. No publicar el secreto JWT en la app ni en variables públicas de Expo. |
 
 La conversión de `fechaHoraInicio` se aplica antes de comparar los inicios para RN-01/RN-02; dos horas exactas de separación son válidas. Esta convención no modifica el tipo `TIMESTAMP` del SQL.
@@ -25,7 +25,7 @@ La conversión de `fechaHoraInicio` se aplica antes de comparar los inicios para
 - Sin token o con token inválido/expirado: **HTTP 401**.
 - Con token válido pero rol insuficiente: **HTTP 403**.
 - Roles: `ADMIN` y `DELEGADO`. Un usuario inactivo no puede autenticarse (RF-01, RN-09).
-- Los 401/403 originados por Spring Security deberán usar el cuerpo de la sección 3. **Todavía no están implementados**; dependerán de la configuración de seguridad de Franco, no de `@RestControllerAdvice` por sí solo.
+- Los 401/403 originados por Spring Security utilizan el cuerpo de la sección 3 mediante la configuración integrada en RF-01, no mediante `@RestControllerAdvice` por sí solo.
 
 ### Matriz de permisos
 
@@ -46,7 +46,7 @@ La conversión de `fechaHoraInicio` se aplica antes de comparar los inicios para
 
 ## 3. Formato de error (implementado para errores de Spring MVC)
 
-El cuerpo común está implementado actualmente para errores manejados por Spring MVC (validación de cuerpo, JSON mal formado, 404, 405 y fallos inesperados). La prueba específica de 415 sigue pendiente. Los **401/403 de Spring Security** y el **409 por conflictos de integridad o de negocio** son parte del contrato aprobado, **pero todavía no están implementados** (ver `PREGUNTAS_PENDIENTES.md`); cuando se agreguen, deben usar el mismo cuerpo.
+El cuerpo común está implementado para errores manejados por Spring MVC (validación de cuerpo, JSON mal formado, 404, 405 y fallos inesperados) y para 401/403 de Spring Security. La prueba específica de 415 sigue pendiente. Esta rama incorpora 409 para conflictos de RF-02; las reglas de otros módulos deben mapear sus propios conflictos al mismo cuerpo (ver `PREGUNTAS_PENDIENTES.md`).
 
 El formato definido es:
 
@@ -79,11 +79,11 @@ El formato definido es:
 | 403 | El usuario autenticado no tiene el rol requerido. |
 | 404 | ID de recurso inexistente. |
 | 405 | Método HTTP no admitido. |
-| 409 | Conflicto de unicidad, de estado o de una regla de negocio. Pendiente de implementar por los módulos y para violaciones de integridad. |
+| 409 | Conflicto de unicidad, de estado o de una regla de negocio. RF-02 usa este cuerpo para username repetido y RN-08; otros módulos deben implementar sus propios casos. |
 | 415 | `Content-Type` no admitido. |
 | 500 | Error interno; la traza queda en el log del servidor, nunca en la respuesta. |
 
-Los errores inesperados se registran en el servidor antes de devolver un 500 genérico. Las validaciones y mensajes nunca deben incluir contraseñas, hashes, tokens, valores rechazados ni trazas. Los filtros de seguridad deberán producir esta respuesta para 401/403; el manejo MVC no los cubre por sí mismo. En las secciones siguientes, 400/401/403/404/409 indican el **comportamiento a implementar**, no endpoints ya probados.
+Los errores inesperados se registran en el servidor antes de devolver un 500 genérico. Las validaciones y mensajes nunca deben incluir contraseñas, hashes, tokens, valores rechazados ni trazas. Los filtros de seguridad producen esta respuesta para 401/403; el manejo MVC no los cubre por sí mismo. En las secciones siguientes, los códigos indican el **contrato HTTP**, no que todos los endpoints estén integrados en `main`.
 
 ## 4. Franco (A): autenticación y usuarios — RF-01, RF-02
 
@@ -98,6 +98,8 @@ Los errores inesperados se registran en el servidor antes de devolver un 500 gen
 | `PATCH /api/usuarios/{id}/estado` | ADMIN | `UsuarioEstadoRequest`: `activo` booleano obligatorio. Desactiva o reactiva. | `200 UsuarioResponse`. | `400`, `401`, `403`, `404`; `409` si un admin intenta desactivarse a sí mismo. |
 
 `UsuarioResponse` contiene `id`, `username`, `nombreCompleto`, `rol`, `activo`, `fechaAlta`; nunca `password`, `passwordHash` ni el hash BCrypt. `username` obligatorio, único e inmutable, máximo 40 caracteres; `password` mínimo 8 caracteres y se almacena solo con BCrypt; `nombreCompleto` obligatorio, máximo 100; `rol` es `ADMIN` o `DELEGADO`. RN-08 se comprueba con la identidad del administrador autenticado. No existe registro público de usuarios ni recuperación de contraseña.
+
+**Estado de RF-02 en esta rama:** controlador, servicio y DTOs incorporados; 409 usa el formato común sin exponer datos internos. La respuesta `fechaAlta` interpreta el `TIMESTAMP` de la base en `America/Argentina/Buenos_Aires` y lo emite con offset ISO-8601. El alta recarga el valor por defecto generado por la base antes de responder. Su funcionamiento se verifica en los tests aislados de usuario y H2 en memoria; aún no está fusionado a `main`.
 
 Ejemplos (RF-01 y RF-02):
 

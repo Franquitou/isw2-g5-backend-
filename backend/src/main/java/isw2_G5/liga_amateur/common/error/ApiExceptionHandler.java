@@ -155,6 +155,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             case 403 -> "Acceso denegado";
             case 404 -> "Recurso no encontrado";
             case 405 -> "Método HTTP no permitido";
+            case 409 -> "Conflicto con los datos o el estado del recurso";
             case 415 -> "Tipo de contenido no admitido";
             default -> status.is5xxServerError() ? "Error interno del servidor" : "No se pudo procesar la solicitud";
         };

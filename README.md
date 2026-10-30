@@ -1,6 +1,6 @@
 # Liga Amateur Santafesina — backend
 
-API del proyecto universitario Liga Amateur Santafesina. El backend incluye la base compartida de Spring Boot, el formato común de errores, la configuración de seguridad, las consultas públicas de canchas y árbitros, y los módulos de negocio integrados en main. Esta rama incorpora RF-01 (login y autenticación JWT). La gestión de usuarios RF-02 continúa pendiente.
+API del proyecto universitario Liga Amateur Santafesina. El backend incluye la base compartida de Spring Boot, el formato común de errores, la configuración de seguridad y RF-01 (login/JWT). Esta rama agrega la gestión de usuarios RF-02; todavía no está integrada en `main`.
 
 ## Tecnologías y requisitos
 
@@ -65,7 +65,7 @@ Cada módulo futuro deberá agrupar sus controladores, servicios, repositorios, 
 
 ### Contrato compartido para errores
 
-Los errores HTTP manejados por Spring MVC y los fallos inesperados usan un objeto JSON con `status` (código HTTP), `message` (mensaje seguro), `timestamp` (instante UTC ISO-8601), `path` (ruta solicitada, si se conoce) y `validationErrors` (lista, vacía salvo errores de validación; cada entrada contiene `field` y `message`). No se incluyen trazas ni valores rechazados en el cuerpo. Una validación fallida devuelve 400; un método no admitido, 405; un recurso inexistente, 404; un fallo inesperado, 500 sin sus detalles internos. Los módulos que se agreguen deben conservar este contrato y usar los estados adecuados a sus operaciones. No hay rutas de negocio implementadas todavía.
+Los errores HTTP manejados por Spring MVC y los fallos inesperados usan un objeto JSON con `status` (código HTTP), `message` (mensaje seguro), `timestamp` (instante UTC ISO-8601), `path` (ruta solicitada, si se conoce) y `validationErrors` (lista, vacía salvo errores de validación; cada entrada contiene `field` y `message`). No se incluyen trazas ni valores rechazados en el cuerpo. Una validación fallida devuelve 400; un método no admitido, 405; un recurso inexistente, 404; un fallo inesperado, 500 sin sus detalles internos. Los módulos que se agreguen deben conservar este contrato y usar los estados adecuados a sus operaciones. RF-02 añade 409 para conflictos; las rutas se documentan en `docs/API.md`.
 
 Las pruebas aisladas del manejador de errores usan MockMvc sin iniciar el contexto completo ni H2:
 
@@ -109,6 +109,16 @@ Las pruebas MVC de seguridad/login usan `spring.sql.init.mode=never` y una URL H
 ```
 
 No ejecutar `test` sin filtro mientras el contexto completo pueda reinicializar la H2 en archivo. Las dependencias de seguridad ya fueron aportadas por el PR #3: este incremento no modifica `pom.xml`.
+
+### Gestión de usuarios RF-02 (esta rama)
+
+Solo ADMIN puede consultar, crear, actualizar, cambiar contraseña y desactivar/reactivar usuarios en `/api/usuarios`. Por defecto el listado muestra activos; `?activo=false` muestra inactivos para su reactivación. El username permanece inmutable; el backend aplica BCrypt a contraseñas nuevas y prohíbe al administrador quitarse ADMIN o desactivarse (RN-08). La baja es lógica (RN-09), sin DELETE físico. Los cuerpos, permisos y errores están en `docs/API.md`.
+
+Estas pruebas no usan la H2 persistente: los tests de DTO/servicio/errores son aislados; `UsuarioControllerTest` usa un contexto MVC sin `DataSource` con `spring.sql.init.mode=never`; `UsuarioRepositoryTest` reemplaza el datasource por H2 **en memoria** y valida el SQL original sin tocar `./data/liga_amateur`:
+
+```powershell
+.\mvnw.cmd '-Dtest=UsuarioDtoValidationTest,UsuarioServiceTest,UsuarioControllerTest,UsuarioRepositoryTest,ApiExceptionHandlerTest' test
+```
 
 ## Trabajo en equipo
 
