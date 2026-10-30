@@ -24,8 +24,8 @@ Estas no dependen del cliente, pero deben quedar cerradas antes del módulo corr
 |---|---|---|---|---|
 | T-01 | Prefijo y versionado de rutas | **Acordado:** prefijo `/api`, recursos plurales. Sin versionado adicional obligatorio. | Todos | Acordada |
 | T-02 | Secreto y algoritmo del JWT | **Acordado:** HS256, secreto seguro por variable de entorno nunca versionado, validez de 8 horas (RNF-05). La configuración aún no está implementada. | A | Acordada |
-| T-03 | Contrato 401/403 con Spring Security | **Acordado:** configurar los puntos de entrada de autenticación y autorización para devolver `ApiErrorResponse`. Pendiente de implementar y probar; no confundir decisión con código terminado. | A | Acordada |
-| T-04 | Violaciones de integridad y conflictos | **Acordado:** HTTP 409 con `ApiErrorResponse` para conflictos de unicidad, estado o reglas de negocio. Pendiente de implementar y probar. | A / cada módulo | Acordada |
+| T-03 | Contrato 401/403 con Spring Security | **Acordado e integrado en RF-01:** los puntos de entrada de autenticación y autorización devuelven `ApiErrorResponse`. | A | Acordada |
+| T-04 | Violaciones de integridad y conflictos | **Acordado:** HTTP 409 con `ApiErrorResponse`. RF-02 incorpora conflictos de username y RN-08 en esta rama; cada módulo debe implementar y probar los suyos. | A / cada módulo | Acordada |
 | T-05 | Respuesta ante `Content-Type` no admitido | Agregar prueba del caso 415 y verificar el cuerpo de error uniforme (sugerido en la revisión del PR #1). | A | Abierta |
 | T-06 | Formato de fechas en la API | **Acordado:** ISO-8601 con offset para fecha/hora del partido; interpretar los `TIMESTAMP` H2 en `America/Argentina/Buenos_Aires`; errores UTC (`Z`). | Todos | Acordada |
 | T-07 | Manejo de `spring.sql.init.mode` | **Acordado:** `always` en el primer arranque crea el esquema y carga los datos iniciales; `never` en arranques posteriores conserva los datos (ver README). El perfil de pruebas en memoria queda como T-08. | A | Acordada |

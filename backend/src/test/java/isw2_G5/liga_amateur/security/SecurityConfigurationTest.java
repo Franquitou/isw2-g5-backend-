@@ -1,6 +1,7 @@
 package isw2_G5.liga_amateur.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import javax.sql.DataSource;
+import io.jsonwebtoken.JwtException;
+import isw2_G5.liga_amateur.users.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -15,6 +18,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -40,6 +44,12 @@ class SecurityConfigurationTest {
     @Autowired
     private ApplicationContext context;
 
+    @MockitoBean
+    private JwtService jwt;
+
+    @MockitoBean
+    private UsuarioRepository users;
+
     @Test
     void mvcSliceDoesNotConfigurePersistentDatabase() {
         assertThat(context.getBeanNamesForType(DataSource.class)).isEmpty();
@@ -63,7 +73,8 @@ class SecurityConfigurationTest {
     }
 
     @Test
-    void bearerHeaderAloneDoesNotAuthenticateUntilJwtIsImplemented() throws Exception {
+    void invalidBearerHeaderDoesNotAuthenticate() throws Exception {
+        when(jwt.verify("no-es-un-token")).thenThrow(new JwtException("Token inválido"));
         mvc.perform(get("/api/usuarios").header("Authorization", "Bearer no-es-un-token"))
                 .andExpect(status().isUnauthorized());
     }

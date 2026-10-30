@@ -1,5 +1,6 @@
 package isw2_G5.liga_amateur.security;
 
+import isw2_G5.liga_amateur.users.repository.UsuarioRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -7,11 +8,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Delimita las consultas públicas y las operaciones por rol conforme al contrato de la API.
- * No habilita aún autenticación JWT: el filtro y el login se incorporarán en RF-01.
+ * El filtro Bearer verifica la firma y el usuario actual antes de autorizar cada operación.
  */
 @Configuration
 public class SecurityConfiguration {
@@ -21,22 +24,27 @@ public class SecurityConfiguration {
      *
      * @param http configuración HTTP de Spring Security
      * @param errorWriter escritor común de errores 401/403
+     * @param jwt servicio de generación y validación de tokens
+     * @param users repositorio para comprobar actividad y rol actuales
      * @return cadena de filtros de seguridad
      * @throws Exception si Spring Security no puede construir la cadena
      */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorResponseWriter errorWriter)
-            throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorResponseWriter errorWriter,
+            JwtService jwt, UsuarioRepository users) throws Exception {
+        AuthenticationEntryPoint unauthorized = (request, response, exception) ->
+                errorWriter.write(request, response, HttpStatus.UNAUTHORIZED);
+        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwt, users, unauthorized);
         http.csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint((request, response, exception) ->
-                                errorWriter.write(request, response, HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint(unauthorized)
                         .accessDeniedHandler((request, response, exception) ->
                                 errorWriter.write(request, response, HttpStatus.FORBIDDEN)))
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(authorization -> authorization
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET,
