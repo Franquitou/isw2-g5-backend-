@@ -89,6 +89,15 @@ class ApiExceptionHandlerTest {
                 .andExpect(jsonPath("$.trace").doesNotExist());
     }
 
+    @Test
+    void conflictingBusinessOperationUsesCommon409() throws Exception {
+        mvc.perform(get("/conflicto"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("Conflicto con los datos o el estado del recurso"))
+                .andExpect(jsonPath("$.path").value("/conflicto"));
+    }
+
     @RestController
     static class TestController {
         @PostMapping("/validacion")
@@ -108,6 +117,11 @@ class ApiExceptionHandlerTest {
         @GetMapping("/fallo")
         void fail() {
             throw new IllegalStateException("detalle interno sensible");
+        }
+
+        @GetMapping("/conflicto")
+        void conflict() {
+            throw new ResponseStatusException(HttpStatus.CONFLICT);
         }
     }
 
