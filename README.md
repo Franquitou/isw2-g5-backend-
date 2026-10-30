@@ -102,6 +102,24 @@ $env:LIGA_JWT_SECRET = [Convert]::ToBase64String($bytes)
 
 No copiar la clave a `application.properties`, capturas, commits ni variables públicas de Expo. Sin la variable, el backend no puede crear el servicio JWT. **No iniciar la aplicación sin revisar antes `spring.sql.init.mode`**: `always` recrea la H2 en archivo.
 
+### Inicio rápido con `run-local.ps1`
+
+En la raíz del repositorio hay un script que automatiza el arranque local:
+
+```powershell
+.\run-local.ps1
+```
+
+El script genera `LIGA_JWT_SECRET` y la guarda como variable de usuario de Windows la primera vez, reutiliza la clave existente en los arranques siguientes, avisa si el puerto 8080 ya está ocupado y ejecuta `spring-boot:run` desde `backend/`. La clave no se imprime en pantalla ni se escribe en el repositorio.
+
+Si PowerShell bloquea la ejecución de scripts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run-local.ps1
+```
+
+El script no modifica `spring.sql.init.mode`: el reinicio de la base H2 en cada arranque sigue el comportamiento documentado en esta sección.
+
 Las pruebas MVC de seguridad/login usan `spring.sql.init.mode=never` y una URL H2 **en memoria** como salvaguarda; esa porción MVC no registra `DataSource` y simula el repositorio. Verifican el recorrido HTTP login → Bearer → ruta protegida, pero **no sustituyen una prueba posterior con persistencia real**. Desde el proyecto Maven:
 
 ```powershell
