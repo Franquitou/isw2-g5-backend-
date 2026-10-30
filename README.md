@@ -1,6 +1,6 @@
 # Liga Amateur Santafesina — backend
 
-API del proyecto universitario Liga Amateur Santafesina. Esta rama prepara únicamente la base compartida: arranque Spring Boot, scripts SQL originales y formato común de errores. Todavía no hay autenticación ni módulos de negocio; están disponibles las consultas públicas de canchas y árbitros (`GET /api/canchas` y `GET /api/arbitros`).
+API del proyecto universitario Liga Amateur Santafesina. El backend incluye la base compartida de Spring Boot, el formato común de errores, la configuración de seguridad, las consultas públicas de canchas y árbitros, y los módulos de negocio integrados en main. Esta rama incorpora RF-01 (login y autenticación JWT). La gestión de usuarios RF-02 continúa pendiente.
 
 ## Tecnologías y requisitos
 
@@ -88,17 +88,27 @@ El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H
 - **`README.md`**: este archivo; mantenerlo actualizado con prerequisitos, configuración, ejecución y pruebas.
 - **`SPEC.md`**: especificación funcional y fuente de verdad de los requerimientos (se entrega junto con el proyecto; no se modifica sin confirmación del cliente).
 
-### Seguridad base (etapa previa a RF-01)
+### Autenticación RF-01 sobre seguridad base
 
-La cadena de seguridad permite únicamente las consultas públicas y el futuro `POST /api/auth/login`; las escrituras requieren ADMIN o DELEGADO según la matriz de permisos aprobada. Las rutas no contempladas quedan denegadas. Usa sesiones sin estado y responde 401/403 con `ApiErrorResponse` desde los filtros (antes de `@RestControllerAdvice`). No se habilitan formulario web ni HTTP Basic. **Todavía no existe autenticación JWT ni login funcional**: un encabezado Bearer por sí solo no otorga acceso hasta implementar la siguiente etapa. No confundir la contraseña temporal que Spring genera en su log con el administrador precargado del SQL.
+`POST /api/auth/login` es público. Comprueba la cuenta activa y el hash BCrypt; responde `token`, `nombreCompleto` y `rol`, sin contraseña ni hash. El JWT HS256 vence a las ocho horas. El filtro Bearer verifica firma y vencimiento, y consulta de nuevo que el usuario siga activo y conserve su rol antes de habilitar rutas protegidas. La cadena permite consultas públicas sin token, controla ADMIN/DELEGADO según `docs/API.md`, deniega rutas no previstas y devuelve 401/403 con `ApiErrorResponse`. Usa sesiones sin estado y no habilita formulario web ni HTTP Basic. La contraseña de desarrollo que Spring pueda mostrar en sus logs **no** es la del administrador precargado ni se utiliza para ingresar a la API.
 
-La prueba MVC de esta política usa `spring.sql.init.mode=never` y una URL H2 **en memoria** como salvaguarda; la porción MVC no registra `DataSource`. Desde el proyecto Maven:
+Para configurar la clave localmente, establecer `LIGA_JWT_SECRET` con **al menos 32 bytes UTF-8** de valor impredecible. Ejemplo de generación para la sesión actual de PowerShell, sin guardar la clave en el repositorio:
 
 ```powershell
-.\mvnw.cmd -Dtest=SecurityConfigurationTest test
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$env:LIGA_JWT_SECRET = [Convert]::ToBase64String($bytes)
 ```
 
-No ejecutar `test` sin filtro mientras el contexto completo pueda reinicializar la H2 en archivo. Las dependencias de seguridad provienen del PR de dependencias: este incremento no modifica `pom.xml`.
+No copiar la clave a `application.properties`, capturas, commits ni variables públicas de Expo. Sin la variable, el backend no puede crear el servicio JWT. **No iniciar la aplicación sin revisar antes `spring.sql.init.mode`**: `always` recrea la H2 en archivo.
+
+Las pruebas MVC de seguridad/login usan `spring.sql.init.mode=never` y una URL H2 **en memoria** como salvaguarda; esa porción MVC no registra `DataSource` y simula el repositorio. Verifican el recorrido HTTP login → Bearer → ruta protegida, pero **no sustituyen una prueba posterior con persistencia real**. Desde el proyecto Maven:
+
+```powershell
+.\mvnw.cmd '-Dtest=AuthFlowTest,SecurityConfigurationTest,JwtServiceTest,JwtAuthenticationFilterTest,AuthServiceTest,AuthControllerTest' test
+```
+
+No ejecutar `test` sin filtro mientras el contexto completo pueda reinicializar la H2 en archivo. Las dependencias de seguridad ya fueron aportadas por el PR #3: este incremento no modifica `pom.xml`.
 
 ## Trabajo en equipo
 
