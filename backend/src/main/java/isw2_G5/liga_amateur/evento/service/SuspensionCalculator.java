@@ -1,47 +1,68 @@
 package isw2_G5.liga_amateur.evento.service;
 
-import isw2_G5.liga_amateur.evento.entity.EventoPartido;
 import isw2_G5.liga_amateur.evento.entity.MotivoSuspension;
 import isw2_G5.liga_amateur.evento.entity.TipoEvento;
+import isw2_G5.liga_amateur.evento.repository.TarjetaDeJugador;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.TreeMap;
 
 /**
- * Regla de suspensión de RF-12: un jugador queda suspendido para la fecha siguiente si en un mismo
- * partido recibió una roja o dos amarillas. Las amarillas no se acumulan entre partidos, por eso la
- * regla se aplica a los eventos de un solo partido. No depende de Spring ni de la base de datos.
+ * Regla pura de suspensión (RN-03/RN-04, RF-12): una roja, o dos amarillas <b>en el mismo partido</b>,
+ * suspenden al jugador para la fecha siguiente. Las amarillas no se acumulan entre partidos.
+ * Si un jugador tiene roja y dos amarillas en el mismo partido, el motivo es {@code ROJA}.
  */
 public final class SuspensionCalculator {
+
+    /**
+     * Sanción resultante para un jugador.
+     *
+     * @param jugadorId jugador sancionado
+     * @param equipoId equipo del jugador
+     * @param motivo roja o doble amarilla
+     */
+    public record Sancion(Integer jugadorId, Integer equipoId, MotivoSuspension motivo) {
+    }
 
     private SuspensionCalculator() {
     }
 
     /**
-     * Determina qué jugadores quedan sancionados por lo ocurrido en un partido.
-     * Si un jugador tiene roja y además dos amarillas, el motivo informado es {@code ROJA}.
+     * Determina quién queda suspendido a partir de las tarjetas de partidos finalizados.
      *
-     * @param eventosDeUnPartido eventos de un único partido; los goles se ignoran
-     * @return id de cada jugador sancionado con su motivo, ordenado por id de jugador
+     * @param tarjetas amarillas y rojas de los partidos de la jornada anterior
+     * @return una sanción por jugador sancionado, ordenada por equipo y jugador
      */
-    public static Map<Integer, MotivoSuspension> calcular(List<EventoPartido> eventosDeUnPartido) {
-        Objects.requireNonNull(eventosDeUnPartido, "eventosDeUnPartido");
-
-        Map<Integer, MotivoSuspension> sanciones = new TreeMap<>();
-        Map<Integer, Integer> amarillas = new HashMap<>();
-        for (EventoPartido evento : eventosDeUnPartido) {
-            Integer jugadorId = evento.getJugadorId();
-            if (evento.getTipo() == TipoEvento.ROJA) {
-                sanciones.put(jugadorId, MotivoSuspension.ROJA);
-            } else if (evento.getTipo() == TipoEvento.AMARILLA) {
-                int total = amarillas.merge(jugadorId, 1, Integer::sum);
-                if (total >= 2) {
-                    sanciones.putIfAbsent(jugadorId, MotivoSuspension.DOBLE_AMARILLA);
-                }
+    public static List<Sancion> calcular(Collection<TarjetaDeJugador> tarjetas) {
+        Map<String, int[]> conteos = new HashMap<>();   // clave partido|jugador -> {amarillas, rojas}
+        Map<String, TarjetaDeJugador> referencia = new HashMap<>();
+        for (TarjetaDeJugador tarjeta : tarjetas) {
+            String clave = tarjeta.partidoId() + "|" + tarjeta.jugadorId();
+            int[] conteo = conteos.computeIfAbsent(clave, k -> new int[2]);
+            referencia.putIfAbsent(clave, tarjeta);
+            if (tarjeta.tipo() == TipoEvento.AMARILLA) {
+                conteo[0]++;
+            } else if (tarjeta.tipo() == TipoEvento.ROJA) {
+                conteo[1]++;
             }
         }
-        return sanciones;
+        Map<Integer, Sancion> porJugador = new HashMap<>();
+        conteos.forEach((clave, conteo) -> {
+            MotivoSuspension motivo = conteo[1] > 0 ? MotivoSuspension.ROJA
+                    : conteo[0] >= 2 ? MotivoSuspension.DOBLE_AMARILLA : null;
+            if (motivo == null) {
+                return;
+            }
+            TarjetaDeJugador base = referencia.get(clave);
+            Sancion existente = porJugador.get(base.jugadorId());
+            if (existente == null || motivo == MotivoSuspension.ROJA) {
+                porJugador.put(base.jugadorId(), new Sancion(base.jugadorId(), base.equipoId(), motivo));
+            }
+        });
+        return porJugador.values().stream()
+                .sorted(Comparator.comparing(Sancion::equipoId).thenComparing(Sancion::jugadorId))
+                .toList();
     }
 }

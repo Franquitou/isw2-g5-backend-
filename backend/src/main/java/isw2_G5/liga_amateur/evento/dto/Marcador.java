@@ -1,11 +1,11 @@
 package isw2_G5.liga_amateur.evento.dto;
 
 /**
- * Resultado de un partido calculado a partir de sus eventos de gol (RN-06).
- * Se serializa como {@code resultado: {golesLocal, golesVisitante}} en el listado y en el detalle.
+ * Resultado derivado de un partido (RN-06). Es el objeto {@code resultado} idéntico en el listado de José
+ * y en el detalle público.
  *
- * @param golesLocal goles a favor del equipo local
- * @param golesVisitante goles a favor del equipo visitante
+ * @param golesLocal goles del equipo local
+ * @param golesVisitante goles del equipo visitante
  */
 public record Marcador(int golesLocal, int golesVisitante) {
 }

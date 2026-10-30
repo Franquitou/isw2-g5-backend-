@@ -9,11 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/**
- * Evento de un partido (gol, amarilla o roja) registrado por un delegado o un administrador (RF-08).
- * Se mapea contra la tabla {@code evento_partido} de {@code schema.sql}. Para corregir un error
- * el evento se borra y se vuelve a cargar (RF-09).
- */
+/** Evento (gol o tarjeta) de un partido. Se mapea contra la tabla {@code evento_partido} de {@code schema.sql}. */
 @Entity
 @Table(name = "evento_partido")
 public class EventoPartido {
@@ -35,17 +31,17 @@ public class EventoPartido {
     @Column(name = "minuto", nullable = false)
     private Integer minuto;
 
-    /** Constructor requerido por JPA para reconstruir la entidad desde la base. */
+    /** Constructor requerido por JPA. */
     protected EventoPartido() {
     }
 
     /**
-     * Crea un evento para un partido.
+     * Crea un evento nuevo.
      *
-     * @param partidoId partido en el que ocurrió
-     * @param jugadorId jugador que protagonizó el evento
+     * @param partidoId partido en el que ocurre
+     * @param jugadorId jugador protagonista
      * @param tipo gol, amarilla o roja
-     * @param minuto minuto del partido, de 1 a 120
+     * @param minuto minuto entre 1 y 120
      */
     public EventoPartido(Integer partidoId, Integer jugadorId, TipoEvento tipo, Integer minuto) {
         this.partidoId = partidoId;

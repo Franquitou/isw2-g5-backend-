@@ -1,37 +1,79 @@
 package isw2_G5.liga_amateur.evento.repository;
 
 import isw2_G5.liga_amateur.evento.entity.EventoPartido;
-import isw2_G5.liga_amateur.evento.entity.TipoEvento;
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
-/** Acceso a los eventos registrados en cada partido. */
+/** Acceso a los eventos de los partidos y a las consultas derivadas de ellos. */
 public interface EventoPartidoRepository extends JpaRepository<EventoPartido, Integer> {
 
     /**
-     * Lista los eventos de un partido en el orden en que ocurrieron.
+     * Lista los eventos de un partido.
      *
      * @param partidoId partido consultado
-     * @return eventos ordenados por minuto y, a igual minuto, por orden de carga
+     * @return eventos ordenados por minuto y luego por id
      */
     List<EventoPartido> findByPartidoIdOrderByMinutoAscIdAsc(Integer partidoId);
 
     /**
-     * Lista los eventos de un partido de un tipo dado, por ejemplo los goles para calcular el marcador.
+     * Devuelve los goles de varios partidos con el equipo del goleador.
      *
-     * @param partidoId partido consultado
-     * @param tipo tipo de evento buscado
-     * @return eventos del partido de ese tipo
+     * @param partidoIds partidos consultados (no vacío)
+     * @return un elemento por gol
      */
-    List<EventoPartido> findByPartidoIdAndTipo(Integer partidoId, TipoEvento tipo);
+    @Query("""
+            select new isw2_G5.liga_amateur.evento.repository.GolDeEquipo(e.partidoId, j.equipoId)
+            from EventoPartido e, Jugador j
+            where e.jugadorId = j.id
+              and e.tipo = isw2_G5.liga_amateur.evento.entity.TipoEvento.GOL
+              and e.partidoId in :partidoIds
+            """)
+    List<GolDeEquipo> golesDeEquipo(@Param("partidoIds") Collection<Integer> partidoIds);
 
     /**
-     * Busca un evento comprobando que pertenece al partido indicado, para no borrar el de otro partido.
+     * Tarjetas de los partidos FINALIZADO de una jornada de un torneo.
      *
-     * @param id identificador del evento
-     * @param partidoId partido al que debe pertenecer
-     * @return el evento, o vacío si no existe o es de otro partido
+     * @param torneoId torneo
+     * @param numeroFecha jornada de las tarjetas
+     * @return amarillas y rojas de esa jornada
      */
-    Optional<EventoPartido> findByIdAndPartidoId(Integer id, Integer partidoId);
+    @Query("""
+            select new isw2_G5.liga_amateur.evento.repository.TarjetaDeJugador(e.partidoId, e.jugadorId, j.equipoId, e.tipo)
+            from EventoPartido e, Jugador j, Partido p
+            where e.jugadorId = j.id
+              and e.partidoId = p.id
+              and p.torneoId = :torneoId
+              and p.numeroFecha = :numeroFecha
+              and p.estado = isw2_G5.liga_amateur.partido.entity.EstadoPartido.FINALIZADO
+              and e.tipo in (isw2_G5.liga_amateur.evento.entity.TipoEvento.AMARILLA,
+                             isw2_G5.liga_amateur.evento.entity.TipoEvento.ROJA)
+            """)
+    List<TarjetaDeJugador> tarjetasDeJornada(@Param("torneoId") Integer torneoId,
+            @Param("numeroFecha") Integer numeroFecha);
+
+    /**
+     * Igual que {@link #tarjetasDeJornada} pero solo de un jugador.
+     *
+     * @param torneoId torneo
+     * @param numeroFecha jornada de las tarjetas
+     * @param jugadorId jugador consultado
+     * @return amarillas y rojas del jugador en esa jornada
+     */
+    @Query("""
+            select new isw2_G5.liga_amateur.evento.repository.TarjetaDeJugador(e.partidoId, e.jugadorId, j.equipoId, e.tipo)
+            from EventoPartido e, Jugador j, Partido p
+            where e.jugadorId = j.id
+              and e.partidoId = p.id
+              and e.jugadorId = :jugadorId
+              and p.torneoId = :torneoId
+              and p.numeroFecha = :numeroFecha
+              and p.estado = isw2_G5.liga_amateur.partido.entity.EstadoPartido.FINALIZADO
+              and e.tipo in (isw2_G5.liga_amateur.evento.entity.TipoEvento.AMARILLA,
+                             isw2_G5.liga_amateur.evento.entity.TipoEvento.ROJA)
+            """)
+    List<TarjetaDeJugador> tarjetasDeJugadorEnJornada(@Param("torneoId") Integer torneoId,
+            @Param("numeroFecha") Integer numeroFecha, @Param("jugadorId") Integer jugadorId);
 }

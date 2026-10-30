@@ -1,12 +1,12 @@
 package isw2_G5.liga_amateur.evento.service;
 
 import isw2_G5.liga_amateur.evento.dto.Marcador;
-import java.util.List;
+import java.util.Collection;
 import java.util.Objects;
 
 /**
- * Regla única del marcador (RN-06): cada gol suma al equipo del jugador que lo convirtió.
- * No hay goles en contra ni resultado cargado a mano. No depende de Spring ni de la base de datos.
+ * Regla pura del marcador (RN-06): cada gol se asigna al equipo del jugador que lo convirtió.
+ * No existen goles en contra; un gol de un equipo ajeno al partido se ignora.
  */
 public final class MarcadorCalculator {
 
@@ -14,29 +14,22 @@ public final class MarcadorCalculator {
     }
 
     /**
-     * Calcula el marcador a partir del equipo de cada autor de gol.
+     * Calcula el marcador de un partido.
      *
-     * @param equipoLocalId id del equipo local del partido
-     * @param equipoVisitanteId id del equipo visitante del partido
-     * @param equiposDeGoleadores un elemento por cada evento GOL: el id del equipo del jugador que lo hizo
+     * @param equipoLocalId equipo local
+     * @param equipoVisitanteId equipo visitante
+     * @param equiposGoleadores un elemento por gol: el equipo del jugador que lo marcó
      * @return marcador; 0-0 si no hay goles
-     * @throws IllegalArgumentException si algún gol pertenece a un equipo que no juega el partido
      */
     public static Marcador calcular(Integer equipoLocalId, Integer equipoVisitanteId,
-                                    List<Integer> equiposDeGoleadores) {
-        Objects.requireNonNull(equipoLocalId, "equipoLocalId");
-        Objects.requireNonNull(equipoVisitanteId, "equipoVisitanteId");
-        Objects.requireNonNull(equiposDeGoleadores, "equiposDeGoleadores");
-
+            Collection<Integer> equiposGoleadores) {
         int local = 0;
         int visitante = 0;
-        for (Integer equipoId : equiposDeGoleadores) {
-            if (equipoLocalId.equals(equipoId)) {
+        for (Integer equipo : equiposGoleadores) {
+            if (Objects.equals(equipo, equipoLocalId)) {
                 local++;
-            } else if (equipoVisitanteId.equals(equipoId)) {
+            } else if (Objects.equals(equipo, equipoVisitanteId)) {
                 visitante++;
-            } else {
-                throw new IllegalArgumentException("El gol pertenece a un equipo que no juega el partido");
             }
         }
         return new Marcador(local, visitante);
