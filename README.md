@@ -56,6 +56,12 @@ isw2_G5.liga_amateur/
 │   ├── entity/Cancha.java, Arbitro.java
 │   ├── repository/CanchaRepository.java, ArbitroRepository.java
 │   └── service/CatalogoService.java
+├── partido/               # partidos (José)
+│   ├── controller/PartidoController.java
+│   ├── dto/PartidoWriteRequest.java, PartidoResponse.java
+│   ├── entity/Partido.java, EstadoPartido.java
+│   ├── repository/PartidoRepository.java
+│   └── service/PartidoService.java, HorarioPartido.java
 └── common/
     ├── dto/ApiErrorResponse.java
     └── error/ApiExceptionHandler.java
@@ -77,6 +83,12 @@ Las pruebas de canchas y árbitros tampoco tocan `./data/liga_amateur`: las de c
 
 ```powershell
 .\mvnw.cmd -Dtest="Catalogo*Test" test
+```
+
+Las pruebas de partidos usan el mismo criterio: `EstadoPartidoTest` y `HorarioPartidoTest` no inician Spring, y `ProgramacionPartidosApiTest` y `ProgramacionPartidosConcurrenciaTest` levantan el contexto sobre una H2 **en memoria** (`jdbc:h2:mem:...`) con `schema.sql` y `data.sql`, sin tocar `./data/liga_amateur`:
+
+```powershell
+.\mvnw.cmd '-Dtest=EstadoPartidoTest,HorarioPartidoTest,ProgramacionPartidos*Test' test
 ```
 
 El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H2: **no ejecutarlo sin autorización y sin prever la pérdida de datos**. Documentar los comandos y resultados efectivamente ejecutados en cada PR.
@@ -119,6 +131,30 @@ powershell -ExecutionPolicy Bypass -File .\run-local.ps1
 ```
 
 El script no modifica `spring.sql.init.mode`: el reinicio de la base H2 en cada arranque sigue el comportamiento documentado en esta sección.
+
+### Datos de demostración
+
+`seed-demo.ps1` carga cuatro equipos con cinco jugadores cada uno usando la API real y la cuenta ADMIN, así que respeta las validaciones del backend. Es idempotente sobre los registros **activos**: reutiliza los equipos por nombre y omite los jugadores cuyo DNI ya exista en el plantel.
+
+La contraseña del ADMIN no está escrita en el script. Se resuelve, en este orden, desde el parámetro `-Password`, la variable de entorno `LIGA_ADMIN_PASSWORD` o una solicitud interactiva que no muestra lo que se escribe:
+
+```powershell
+$env:LIGA_ADMIN_PASSWORD = 'tu-contrasena'
+.\seed-demo.ps1
+```
+
+Si el backend corre en otra máquina o puerto:
+
+```powershell
+$env:LIGA_ADMIN_PASSWORD = 'tu-contrasena'
+.\seed-demo.ps1 -ApiUrl http://192.168.0.253:8080/api
+```
+
+Un `409` es un conflicto de unicidad, no necesariamente una baja lógica: el nombre de equipo puede estar en uso en el torneo o el DNI puede pertenecer a un jugador activo de otro equipo. Por eso el script usa mensajes neutrales: informa el conflicto, omite ese registro y continúa con los demás. Si se omite un equipo, sus jugadores no se procesan y se informan aparte en el resumen como **jugadores sin procesar (equipo omitido)**, para que el total no parezca incompleto.
+
+Conviene leer el resumen final: las líneas `omitidos (409)` y `sin procesar` indican los conflictos que el script no pudo resolver por API.
+
+Como `spring.sql.init.mode=always` reinicia la base en cada arranque, el script debe ejecutarse después de iniciar el backend.
 
 Las pruebas MVC de seguridad/login usan `spring.sql.init.mode=never` y una URL H2 **en memoria** como salvaguarda; esa porción MVC no registra `DataSource` y simula el repositorio. Verifican el recorrido HTTP login → Bearer → ruta protegida, pero **no sustituyen una prueba posterior con persistencia real**. Desde el proyecto Maven:
 

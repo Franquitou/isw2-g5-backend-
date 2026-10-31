@@ -11,10 +11,12 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 /**
- * Partido de un torneo. Mapea la tabla {@code partido} de {@code schema.sql}.
+ * Partido de una jornada del torneo. Se mapea sobre la tabla {@code partido} de {@code schema.sql}.
  *
- * <p>PROVISORIA: el módulo de programación (José, C) es el dueño de esta entidad. Esta versión solo existe
- * para que eventos, tabla y suspendidos puedan leer partidos; al integrar, se conserva la de José.</p>
+ * <p>Las referencias a torneo, equipos, cancha y árbitro se guardan como identificadores, igual que en
+ * {@code Equipo}: las reglas que las relacionan se validan en {@code PartidoService}. La fecha y hora de inicio
+ * está expresada en la zona de la liga ({@code HorarioPartido.ZONA_LIGA}). El resultado no se guarda: se calcula
+ * a partir de los eventos (RN-06).</p>
  */
 @Entity
 @Table(name = "partido")
@@ -49,13 +51,46 @@ public class Partido {
     @Column(name = "estado", nullable = false, length = 20)
     private EstadoPartido estado;
 
-    /** Constructor requerido por JPA. */
+    /** Constructor requerido por JPA para reconstruir la entidad desde la base. */
     protected Partido() {
     }
 
-    /** Crea un partido con todos sus datos; usado por las pruebas hasta que exista el módulo de programación. */
+    /**
+     * Crea un partido nuevo, que siempre nace {@link EstadoPartido#PROGRAMADO}.
+     *
+     * @param torneoId torneo al que pertenece
+     * @param numeroFecha jornada, desde 1
+     * @param equipoLocalId equipo local
+     * @param equipoVisitanteId equipo visitante
+     * @param canchaId cancha asignada
+     * @param arbitroId árbitro asignado
+     * @param fechaHoraInicio inicio en la zona de la liga
+     */
     public Partido(Integer torneoId, Integer numeroFecha, Integer equipoLocalId, Integer equipoVisitanteId,
-            Integer canchaId, Integer arbitroId, LocalDateTime fechaHoraInicio, EstadoPartido estado) {
+            Integer canchaId, Integer arbitroId, LocalDateTime fechaHoraInicio) {
+        this.estado = EstadoPartido.PROGRAMADO;
+        asignar(torneoId, numeroFecha, equipoLocalId, equipoVisitanteId, canchaId, arbitroId, fechaHoraInicio);
+    }
+
+    /**
+     * Reemplaza los datos de programación. Solo debe usarse mientras el partido está
+     * {@link EstadoPartido#PROGRAMADO}; esa regla la controla {@code PartidoService}.
+     *
+     * @param torneoId torneo al que pertenece
+     * @param numeroFecha jornada, desde 1
+     * @param equipoLocalId equipo local
+     * @param equipoVisitanteId equipo visitante
+     * @param canchaId cancha asignada
+     * @param arbitroId árbitro asignado
+     * @param fechaHoraInicio inicio en la zona de la liga
+     */
+    public void reprogramar(Integer torneoId, Integer numeroFecha, Integer equipoLocalId, Integer equipoVisitanteId,
+            Integer canchaId, Integer arbitroId, LocalDateTime fechaHoraInicio) {
+        asignar(torneoId, numeroFecha, equipoLocalId, equipoVisitanteId, canchaId, arbitroId, fechaHoraInicio);
+    }
+
+    private void asignar(Integer torneoId, Integer numeroFecha, Integer equipoLocalId, Integer equipoVisitanteId,
+            Integer canchaId, Integer arbitroId, LocalDateTime fechaHoraInicio) {
         this.torneoId = torneoId;
         this.numeroFecha = numeroFecha;
         this.equipoLocalId = equipoLocalId;
@@ -63,7 +98,6 @@ public class Partido {
         this.canchaId = canchaId;
         this.arbitroId = arbitroId;
         this.fechaHoraInicio = fechaHoraInicio;
-        this.estado = estado;
     }
 
     public Integer getId() {

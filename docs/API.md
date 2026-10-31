@@ -178,8 +178,8 @@ Un `PUT /api/jugadores/15` vuelve a incluir los cuatro campos editables; `DELETE
 
 | Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
 |---|---|---|---|---|
-| `GET /api/canchas` | Público | Sin cuerpo. | `200 CanchaResponse[]`, solo activas, ordenadas por `nombre`. | `405` ante métodos de escritura; errores HTTP generales. |
-| `GET /api/arbitros` | Público | Sin cuerpo. | `200 ArbitroResponse[]`, solo activos, ordenados por `apellido` y `nombre`. | `405` ante métodos de escritura; errores HTTP generales. |
+| `GET /api/canchas` | Público | Sin cuerpo. | `200 CanchaResponse[]`, solo activas, ordenadas por `nombre`. | Errores HTTP generales. Las escrituras no existen: Spring Security las rechaza con `401`/`403`. |
+| `GET /api/arbitros` | Público | Sin cuerpo. | `200 ArbitroResponse[]`, solo activos, ordenados por `apellido` y `nombre`. | Errores HTTP generales. Las escrituras no existen: Spring Security las rechaza con `401`/`403`. |
 
 `CanchaResponse`: `id`, `nombre`, `direccion` (puede ser `null`), `activo`. `ArbitroResponse`: `id`, `nombre`, `apellido`, `dni` (cadena), `activo`. Son datos precargados por `data.sql`, **sin endpoints de escritura**. El filtro de activos se resuelve en la consulta a la base. Implementado en el paquete `isw2_G5.liga_amateur.catalogo`; las entidades `Cancha` y `Arbitro` son las que usará la programación de partidos.
 
@@ -191,7 +191,9 @@ GET /api/canchas
 [{"id":1,"nombre":"Cancha Municipal Norte","direccion":"Av. Blas Parera 7400","activo":true},{"id":3,"nombre":"Complejo El Alero","direccion":"Pje. Los Ceibos 1350","activo":true},{"id":2,"nombre":"Predio La Costanera","direccion":"Av. Almirante Brown 5200","activo":true}]
 ```
 
-### 6.2 Programación, estados y listado (pendiente)
+### 6.2 Programación (RF-06: implementado), estados y listado (pendientes)
+
+Estado de implementación: `POST`, `PUT` y `DELETE /api/partidos` están implementados en `isw2_G5.liga_amateur.partido`; `PATCH /api/partidos/{id}/estado` (RF-07) y el listado por jornada (RF-10) siguen pendientes.
 
 | Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
 |---|---|---|---|---|
@@ -202,6 +204,14 @@ GET /api/canchas
 | `GET /api/torneos/{torneoId}/partidos?numeroFecha=N` | Público | `torneoId` positivo y `numeroFecha` obligatorio, desde 1. | `200 PartidoListadoResponse[]` con resultado derivado. | `400` filtro inválido/faltante; `404` torneo inexistente. |
 
 `PartidoResponse` contiene `id`, `torneoId`, `numeroFecha`, `equipoLocalId`, `equipoVisitanteId`, `canchaId`, `arbitroId`, `fechaHoraInicio`, `estado`. `PartidoListadoResponse` agrega a esos campos `resultado: {golesLocal, golesVisitante}`; la misma estructura `resultado` se usa en el detalle de Mateo. IDs existentes y positivos; jornada ≥1; equipos distintos, del mismo torneo y no desactivados para partido nuevo; cancha y árbitro activos; un equipo no juega dos veces en una misma jornada. Cancha y árbitro no pueden estar asignados a otro partido **no suspendido** con inicios separados por menos de dos horas (RN-01/02). Ver sección 1 para comparar instantes con offset.
+
+Decisiones de implementación de RF-06:
+
+- Orden de validación: primero el cuerpo (`400`), después las referencias inexistentes (`404`) y por último las reglas de negocio (`409`), cada una con un mensaje propio en `message`.
+- Un partido `SUSPENDIDO` no ocupa cancha, árbitro ni jornada: como no se reprograma, se puede crear su reemplazo en la misma jornada.
+- Equipos, cancha y árbitro dados de baja no pueden usarse ni al programar ni al reprogramar (`409`). Qué ocurre con los partidos ya programados de un equipo que se da de baja sigue abierto (P-06); hasta que se acuerde, no se aplica ninguna excepción.
+- Concurrencia: validar y guardar ocurre en una sola transacción que bloquea (`SELECT ... FOR UPDATE`) los equipos, la cancha y el árbitro involucrados. Dos solicitudes simultáneas que comparten alguno de esos recursos se procesan una después de la otra, así que no pueden generar superposiciones; si la espera supera el tiempo de bloqueo de la base, se responde `409` para reintentar.
+- `fechaHoraInicio` se responde siempre con segundos y el offset de la liga (`2026-11-07T18:00:00-03:00`), aunque se haya enviado con otro offset (`2026-11-07T21:00:00Z` se guarda y responde como 18:00 de Santa Fe). Un valor sin offset es `400`.
 
 Transiciones exclusivas: `PROGRAMADO` → `EN_JUEGO` o `SUSPENDIDO`; `EN_JUEGO` → `FINALIZADO` o `SUSPENDIDO`. `FINALIZADO` y `SUSPENDIDO` son finales. Al **iniciar** un partido de la jornada N, RN-07 impide el cambio si algún partido de N−1 sigue `PROGRAMADO` o `EN_JUEGO`; se permite programar fechas futuras con anticipación. Un suspendido no se reprograma: se crea otro partido conforme a RF-06.
 
