@@ -6,9 +6,14 @@
     Usa la API real con la cuenta ADMIN, asi que respeta todas las validaciones
     del backend (nombres unicos, DNI unico, camiseta 1-99, baja logica).
 
-    El script es idempotente: si un equipo ya existe en el torneo lo reutiliza y
-    si un DNI ya esta cargado lo omite. Se puede ejecutar varias veces sin
-    duplicar datos.
+    El script es idempotente sobre los registros ACTIVOS: si un equipo ya existe
+    en el torneo lo reutiliza y si un DNI ya esta cargado en el plantel lo omite.
+    Se puede ejecutar varias veces sin duplicar datos.
+
+    La baja es logica: un equipo o jugador dado de baja no aparece en los
+    listados publicos, asi que el script no puede detectarlo de antemano. En ese
+    caso el backend responde 409 al intentar crearlo; el script informa el
+    conflicto, omite ese registro y continua con el resto.
 
     Recordatorio: con spring.sql.init.mode=always la base se reinicia en cada
     arranque del backend. Volve a ejecutar este script despues de iniciarlo.
@@ -20,12 +25,15 @@
     Usuario ADMIN. Por defecto admin
 
 .PARAMETER Password
-    Contrasena del ADMIN. Por defecto Admin2026!
+    Contrasena del ADMIN. Si se omite, se toma de la variable de entorno
+    LIGA_ADMIN_PASSWORD; si tampoco esta definida, se solicita al ejecutar sin
+    mostrarla en pantalla.
 
 .PARAMETER TorneoId
     Torneo donde se cargan los equipos. Por defecto 1
 
 .EXAMPLE
+    $env:LIGA_ADMIN_PASSWORD = 'tu-contrasena'
     .\seed-demo.ps1
 
 .EXAMPLE
@@ -38,12 +46,30 @@
 param(
     [string]$ApiUrl = 'http://localhost:8080/api',
     [string]$Username = 'admin',
-    [string]$Password = 'Admin2026!',
+    [string]$Password,
     [int]$TorneoId = 1
 )
 
 $ErrorActionPreference = 'Stop'
 $ApiUrl = $ApiUrl.TrimEnd('/')
+
+# La contrasena nunca queda escrita en el script ni en la documentacion.
+if ([string]::IsNullOrWhiteSpace($Password)) {
+    $Password = $env:LIGA_ADMIN_PASSWORD
+}
+if ([string]::IsNullOrWhiteSpace($Password)) {
+    $seguro = Read-Host "Contrasena del usuario '$Username'" -AsSecureString
+    $puntero = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro)
+    try {
+        $Password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($puntero)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($puntero)
+    }
+}
+if ([string]::IsNullOrWhiteSpace($Password)) {
+    Write-Host 'No se indico una contrasena. Usa -Password, LIGA_ADMIN_PASSWORD o escribila cuando se solicite.' -ForegroundColor Red
+    exit 1
+}
 
 function Write-Ok {
     param([string]$Texto)
@@ -87,6 +113,15 @@ function Get-LigaLista {
     $respuesta = Invoke-LigaApi -Method Get -Path $Path -Headers $Headers
     if ($null -eq $respuesta) { return @() }
     return @($respuesta)
+}
+
+function Get-ErrorStatus {
+    param([Parameter(Mandatory)]$ErrorRecord)
+    # Devuelve el codigo HTTP de un error de Invoke-RestMethod, o $null si no
+    # hubo respuesta (por ejemplo, backend caido).
+    $response = $ErrorRecord.Exception.Response
+    if ($null -eq $response -or $null -eq $response.StatusCode) { return $null }
+    return [int]$response.StatusCode
 }
 
 $catalogo = @(
@@ -171,8 +206,10 @@ try {
 $auth = @{ Authorization = "Bearer $($login.token)" }
 $equiposCreados = 0
 $equiposReutilizados = 0
+$equiposOmitidos = 0
 $jugadoresCreados = 0
 $jugadoresExistentes = 0
+$jugadoresOmitidos = 0
 
 foreach ($equipo in $catalogo) {
     if ($equiposExistentes.ContainsKey($equipo.nombre)) {
@@ -180,13 +217,24 @@ foreach ($equipo in $catalogo) {
         $equiposReutilizados++
         Write-Host ("  = {0} (id {1})" -f $equipo.nombre, $equipoId)
     } else {
-        $creado = Invoke-LigaApi -Method Post -Path "/torneos/$TorneoId/equipos" -Headers $auth -Body @{
-            nombre = $equipo.nombre
-            barrio = $equipo.barrio
+        try {
+            $creado = Invoke-LigaApi -Method Post -Path "/torneos/$TorneoId/equipos" -Headers $auth -Body @{
+                nombre = $equipo.nombre
+                barrio = $equipo.barrio
+            }
+            $equipoId = $creado.id
+            $equiposCreados++
+            Write-Ok ("  + {0} (id {1})" -f $equipo.nombre, $equipoId)
+        } catch {
+            if ((Get-ErrorStatus $_) -eq 409) {
+                # El nombre pertenece a un equipo dado de baja: no se puede crear
+                # ni reactivar por API. Se omite el equipo y su plantel.
+                $equiposOmitidos++
+                Write-Aviso ("  ! {0}: ya existe con ese nombre pero esta dado de baja. Se omite el equipo y su plantel." -f $equipo.nombre)
+                continue
+            }
+            throw
         }
-        $equipoId = $creado.id
-        $equiposCreados++
-        Write-Ok ("  + {0} (id {1})" -f $equipo.nombre, $equipoId)
     }
 
     $dnis = @{}
@@ -198,17 +246,29 @@ foreach ($equipo in $catalogo) {
             $jugadoresExistentes++
             continue
         }
-        Invoke-LigaApi -Method Post -Path "/equipos/$equipoId/jugadores" -Headers $auth -Body $jugador | Out-Null
-        $jugadoresCreados++
+        try {
+            Invoke-LigaApi -Method Post -Path "/equipos/$equipoId/jugadores" -Headers $auth -Body $jugador | Out-Null
+            $jugadoresCreados++
+        } catch {
+            if ((Get-ErrorStatus $_) -eq 409) {
+                # El DNI pertenece a un jugador dado de baja: se informa y se sigue.
+                $jugadoresOmitidos++
+                Write-Aviso ("  ! DNI {0} ({1} {2}): ya registrado y dado de baja. Se omite." -f $jugador.dni, $jugador.nombre, $jugador.apellido)
+                continue
+            }
+            throw
+        }
     }
 }
 
 Write-Host ''
 Write-Host 'Resumen' -ForegroundColor Cyan
-Write-Host "  Equipos creados:      $equiposCreados"
-Write-Host "  Equipos ya existentes: $equiposReutilizados"
-Write-Host "  Jugadores creados:     $jugadoresCreados"
+Write-Host "  Equipos creados:        $equiposCreados"
+Write-Host "  Equipos ya existentes:  $equiposReutilizados"
+Write-Host "  Equipos omitidos (409): $equiposOmitidos"
+Write-Host "  Jugadores creados:      $jugadoresCreados"
 Write-Host "  Jugadores ya existentes: $jugadoresExistentes"
+Write-Host "  Jugadores omitidos (409): $jugadoresOmitidos"
 Write-Host ''
 
 $equiposFinales = @(Get-LigaLista -Path "/torneos/$TorneoId/equipos")

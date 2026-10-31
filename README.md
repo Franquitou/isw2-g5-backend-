@@ -122,17 +122,23 @@ El script no modifica `spring.sql.init.mode`: el reinicio de la base H2 en cada 
 
 ### Datos de demostración
 
-`seed-demo.ps1` carga cuatro equipos con cinco jugadores cada uno usando la API real y la cuenta ADMIN, así que respeta las validaciones del backend. Es idempotente: reutiliza los equipos por nombre y omite los jugadores cuyo DNI ya exista.
+`seed-demo.ps1` carga cuatro equipos con cinco jugadores cada uno usando la API real y la cuenta ADMIN, así que respeta las validaciones del backend. Es idempotente sobre los registros **activos**: reutiliza los equipos por nombre y omite los jugadores cuyo DNI ya exista en el plantel.
+
+La contraseña del ADMIN no está escrita en el script. Se resuelve, en este orden, desde el parámetro `-Password`, la variable de entorno `LIGA_ADMIN_PASSWORD` o una solicitud interactiva que no muestra lo que se escribe:
 
 ```powershell
+$env:LIGA_ADMIN_PASSWORD = 'tu-contrasena'
 .\seed-demo.ps1
 ```
 
 Si el backend corre en otra máquina o puerto:
 
 ```powershell
+$env:LIGA_ADMIN_PASSWORD = 'tu-contrasena'
 .\seed-demo.ps1 -ApiUrl http://192.168.0.253:8080/api
 ```
+
+La baja de equipos y jugadores es lógica: esos registros no aparecen en los listados públicos, así que el script no puede detectarlos de antemano. Si un nombre de equipo o un DNI ya pertenece a un registro dado de baja, el backend responde `409`; el script informa el conflicto, omite ese registro (y el plantel del equipo omitido) y continúa con los demás. Por eso conviene leer el resumen final: los contadores de omitidos indican conflictos con bajas lógicas.
 
 Como `spring.sql.init.mode=always` reinicia la base en cada arranque, el script debe ejecutarse después de iniciar el backend.
 
