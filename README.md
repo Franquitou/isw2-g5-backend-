@@ -138,7 +138,9 @@ $env:LIGA_ADMIN_PASSWORD = 'tu-contrasena'
 .\seed-demo.ps1 -ApiUrl http://192.168.0.253:8080/api
 ```
 
-La baja de equipos y jugadores es lógica: esos registros no aparecen en los listados públicos, así que el script no puede detectarlos de antemano. Si un nombre de equipo o un DNI ya pertenece a un registro dado de baja, el backend responde `409`; el script informa el conflicto, omite ese registro (y el plantel del equipo omitido) y continúa con los demás. Por eso conviene leer el resumen final: los contadores de omitidos indican conflictos con bajas lógicas.
+Un `409` es un conflicto de unicidad, no necesariamente una baja lógica: el nombre de equipo puede estar en uso en el torneo o el DNI puede pertenecer a un jugador activo de otro equipo. Por eso el script usa mensajes neutrales: informa el conflicto, omite ese registro y continúa con los demás. Si se omite un equipo, sus jugadores no se procesan y se informan aparte en el resumen como **jugadores sin procesar (equipo omitido)**, para que el total no parezca incompleto.
+
+Conviene leer el resumen final: las líneas `omitidos (409)` y `sin procesar` indican los conflictos que el script no pudo resolver por API.
 
 Como `spring.sql.init.mode=always` reinicia la base en cada arranque, el script debe ejecutarse después de iniciar el backend.
 

@@ -10,10 +10,12 @@
     en el torneo lo reutiliza y si un DNI ya esta cargado en el plantel lo omite.
     Se puede ejecutar varias veces sin duplicar datos.
 
-    La baja es logica: un equipo o jugador dado de baja no aparece en los
-    listados publicos, asi que el script no puede detectarlo de antemano. En ese
-    caso el backend responde 409 al intentar crearlo; el script informa el
-    conflicto, omite ese registro y continua con el resto.
+    La respuesta 409 es un conflicto de unicidad: el nombre de equipo ya existe en
+    el torneo o el DNI ya esta registrado en la liga. No siempre implica una baja
+    logica (por ejemplo, el DNI puede pertenecer a un jugador activo de otro
+    equipo). El script informa el conflicto con un mensaje neutral, omite ese
+    registro y continua con el resto. Si se omite un equipo, sus jugadores no se
+    procesan y se cuentan por separado en el resumen.
 
     Recordatorio: con spring.sql.init.mode=always la base se reinicia en cada
     arranque del backend. Volve a ejecutar este script despues de iniciarlo.
@@ -210,6 +212,7 @@ $equiposOmitidos = 0
 $jugadoresCreados = 0
 $jugadoresExistentes = 0
 $jugadoresOmitidos = 0
+$jugadoresSinProcesar = 0
 
 foreach ($equipo in $catalogo) {
     if ($equiposExistentes.ContainsKey($equipo.nombre)) {
@@ -227,10 +230,12 @@ foreach ($equipo in $catalogo) {
             Write-Ok ("  + {0} (id {1})" -f $equipo.nombre, $equipoId)
         } catch {
             if ((Get-ErrorStatus $_) -eq 409) {
-                # El nombre pertenece a un equipo dado de baja: no se puede crear
-                # ni reactivar por API. Se omite el equipo y su plantel.
+                # El nombre ya esta en uso en el torneo (registro activo o dado
+                # de baja). Se omite el equipo y su plantel.
                 $equiposOmitidos++
-                Write-Aviso ("  ! {0}: ya existe con ese nombre pero esta dado de baja. Se omite el equipo y su plantel." -f $equipo.nombre)
+                $cantidadJugadores = @($equipo.jugadores).Count
+                $jugadoresSinProcesar += $cantidadJugadores
+                Write-Aviso ("  ! {0}: conflicto 409 al crear el equipo (el nombre ya esta en uso). Se omite el equipo y sus {1} jugadores." -f $equipo.nombre, $cantidadJugadores)
                 continue
             }
             throw
@@ -251,9 +256,9 @@ foreach ($equipo in $catalogo) {
             $jugadoresCreados++
         } catch {
             if ((Get-ErrorStatus $_) -eq 409) {
-                # El DNI pertenece a un jugador dado de baja: se informa y se sigue.
+                # El DNI ya esta registrado en la liga, en este equipo o en otro.
                 $jugadoresOmitidos++
-                Write-Aviso ("  ! DNI {0} ({1} {2}): ya registrado y dado de baja. Se omite." -f $jugador.dni, $jugador.nombre, $jugador.apellido)
+                Write-Aviso ("  ! DNI {0} ({1} {2}): conflicto 409 (el DNI ya esta registrado en la liga). Se omite." -f $jugador.dni, $jugador.nombre, $jugador.apellido)
                 continue
             }
             throw
@@ -269,6 +274,7 @@ Write-Host "  Equipos omitidos (409): $equiposOmitidos"
 Write-Host "  Jugadores creados:      $jugadoresCreados"
 Write-Host "  Jugadores ya existentes: $jugadoresExistentes"
 Write-Host "  Jugadores omitidos (409): $jugadoresOmitidos"
+Write-Host "  Jugadores sin procesar (equipo omitido): $jugadoresSinProcesar"
 Write-Host ''
 
 $equiposFinales = @(Get-LigaLista -Path "/torneos/$TorneoId/equipos")
