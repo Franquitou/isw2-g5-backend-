@@ -58,7 +58,7 @@ isw2_G5.liga_amateur/
 │   └── service/CatalogoService.java
 ├── partido/               # partidos (José)
 │   ├── controller/PartidoController.java
-│   ├── dto/PartidoWriteRequest.java, PartidoEstadoRequest.java, PartidoResponse.java
+│   ├── dto/PartidoWriteRequest.java, PartidoEstadoRequest.java, PartidoResponse.java, PartidoListadoResponse.java
 │   ├── entity/Partido.java, EstadoPartido.java
 │   ├── repository/PartidoRepository.java
 │   └── service/PartidoService.java, HorarioPartido.java
@@ -85,10 +85,10 @@ Las pruebas de canchas y árbitros tampoco tocan `./data/liga_amateur`: las de c
 .\mvnw.cmd -Dtest="Catalogo*Test" test
 ```
 
-Las pruebas de partidos usan el mismo criterio: `EstadoPartidoTest` y `HorarioPartidoTest` no inician Spring, y `ProgramacionPartidosApiTest`, `ProgramacionPartidosConcurrenciaTest` y `EstadoPartidosApiTest` levantan el contexto sobre una H2 **en memoria** (`jdbc:h2:mem:...`) con `schema.sql` y `data.sql`, sin tocar `./data/liga_amateur`:
+Las pruebas de partidos usan el mismo criterio: `EstadoPartidoTest` y `HorarioPartidoTest` no inician Spring, y `ProgramacionPartidosApiTest`, `ProgramacionPartidosConcurrenciaTest`, `EstadoPartidosApiTest` y `ListadoPartidosApiTest` levantan el contexto sobre una H2 **en memoria** (`jdbc:h2:mem:...`) con `schema.sql` y `data.sql`, sin tocar `./data/liga_amateur`:
 
 ```powershell
-.\mvnw.cmd '-Dtest=EstadoPartidoTest,HorarioPartidoTest,ProgramacionPartidos*Test,EstadoPartidosApiTest' test
+.\mvnw.cmd '-Dtest=EstadoPartidoTest,HorarioPartidoTest,ProgramacionPartidos*Test,EstadoPartidosApiTest,ListadoPartidosApiTest' test
 ```
 
 El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H2: **no ejecutarlo sin autorización y sin prever la pérdida de datos**. Documentar los comandos y resultados efectivamente ejecutados en cada PR.

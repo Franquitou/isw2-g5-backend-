@@ -36,6 +36,16 @@ public interface PartidoRepository extends JpaRepository<Partido, Integer> {
      */
     List<Partido> findByArbitroIdAndEstadoNotAndFechaHoraInicioBetween(
             Integer arbitroId, EstadoPartido excluido, LocalDateTime desde, LocalDateTime hasta);
+
+    /**
+     * Lista los partidos de una jornada de un torneo (RF-10), en cualquier estado, ordenados por inicio.
+     *
+     * @param torneoId torneo consultado
+     * @param numeroFecha jornada consultada
+     * @return partidos de la jornada ordenados por inicio y luego por id
+     */
+    List<Partido> findByTorneoIdAndNumeroFechaOrderByFechaHoraInicioAscIdAsc(
+            Integer torneoId, Integer numeroFecha);
     /**
      * Indica si una jornada de un torneo tiene algún partido en alguno de los estados indicados.
      * Se usa para RN-07: no se inicia la jornada N mientras la N−1 tenga partidos sin terminar.

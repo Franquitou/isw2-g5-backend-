@@ -191,9 +191,9 @@ GET /api/canchas
 [{"id":1,"nombre":"Cancha Municipal Norte","direccion":"Av. Blas Parera 7400","activo":true},{"id":3,"nombre":"Complejo El Alero","direccion":"Pje. Los Ceibos 1350","activo":true},{"id":2,"nombre":"Predio La Costanera","direccion":"Av. Almirante Brown 5200","activo":true}]
 ```
 
-### 6.2 Programación y estados (RF-06 y RF-07: implementados) y listado (pendiente)
+### 6.2 Programación, estados y listado (RF-06, RF-07 y RF-10: implementados)
 
-Estado de implementación: `POST`, `PUT` y `DELETE /api/partidos` (RF-06) y `PATCH /api/partidos/{id}/estado` (RF-07) están implementados en `isw2_G5.liga_amateur.partido`; el listado por jornada (RF-10) sigue pendiente.
+Estado de implementación: `POST`, `PUT` y `DELETE /api/partidos` (RF-06), `PATCH /api/partidos/{id}/estado` (RF-07) y `GET /api/torneos/{torneoId}/partidos?numeroFecha=N` (RF-10) están implementados en `isw2_G5.liga_amateur.partido`.
 
 | Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
 |---|---|---|---|---|
@@ -222,6 +222,7 @@ Decisiones de implementación de RF-07:
 - RN-07 compara con la jornada N−1 **del mismo torneo** y solo bloquea el paso a `EN_JUEGO`: suspender o finalizar nunca queda bloqueado. Si la jornada N−1 no tiene partidos, no bloquea. Los `SUSPENDIDO` de N−1 no bloquean (P-01).
 - El partido se lee bloqueado, así que dos cambios simultáneos sobre el mismo partido se aplican de a uno.
 - Una vez iniciado, el partido ya no se puede reprogramar ni borrar (`409`, RF-06).
+- `GET /api/torneos/{torneoId}/partidos?numeroFecha=N` (RF-10) devuelve los partidos de esa jornada en cualquier estado, ordenados por `fechaHoraInicio` y luego por `id`. `resultado` se calcula con `MarcadorService`, el mismo servicio del detalle, así que ambos coinciden. Una jornada sin partidos devuelve `200 []`; `numeroFecha` faltante o inválido y `torneoId` inválido devuelven `400`, y un torneo inexistente `404`.
 
 Ejemplos (RF-06, RF-07 y listado RF-10):
 
@@ -263,7 +264,7 @@ GET /api/torneos/1/partidos?numeroFecha=1
 
 La suspensión solo proviene de partidos `FINALIZADO` de N−1 por una roja o dos amarillas **en el mismo partido**; no se acumulan amarillas entre partidos ni se crea tabla de suspensiones. Si no existe una fecha posterior programada, no se traslada una sanción a otra competición.
 
-Estado de implementación (módulo D): RF-08, RF-09, detalle de RF-10, RF-11 y RF-12 están implementados en la rama feature/eventos-resultados. Decisiones que no modifican el contrato: (1) orden de validación al registrar un evento: ID inválido (400), partido inexistente (404), jugador inexistente (404), partido fuera de EN_JUEGO (409), jugador inactivo (409), jugador ajeno a los dos equipos (409) y jugador suspendido en la jornada (409); (2) al eliminar, un evento inexistente o de otro partido devuelve 404 antes de evaluar el estado del partido; (3) si un jugador tiene roja y dos amarillas en el mismo partido, el motivo informado es ROJA; (4) la tabla incluye los equipos activos del torneo, más los dados de baja que tengan partidos FINALIZADO, para no alterar el historial (RN-09); (5) GET /api/torneos/{id}/suspendidos?numeroFecha=1 devuelve lista vacía, porque no existe jornada 0. Para listados, MarcadorService ofrece además calcularPorPartido(Collection<Partido>), que calcula varios marcadores con una sola consulta.
+Estado de implementación (módulo D): RF-08, RF-09, detalle de RF-10, RF-11 y RF-12 están implementados en `main`. Decisiones que no modifican el contrato: (1) orden de validación al registrar un evento: ID inválido (400), partido inexistente (404), jugador inexistente (404), partido fuera de EN_JUEGO (409), jugador inactivo (409), jugador ajeno a los dos equipos (409) y jugador suspendido en la jornada (409); (2) al eliminar, un evento inexistente o de otro partido devuelve 404 antes de evaluar el estado del partido; (3) si un jugador tiene roja y dos amarillas en el mismo partido, el motivo informado es ROJA; (4) la tabla incluye los equipos activos del torneo, más los dados de baja que tengan partidos FINALIZADO, para no alterar el historial (RN-09); (5) GET /api/torneos/{id}/suspendidos?numeroFecha=1 devuelve lista vacía, porque no existe jornada 0. Para listados, MarcadorService ofrece además calcularPorPartido(Collection<Partido>), que calcula varios marcadores con una sola consulta.
 Ejemplos (RF-08 a RF-12):
 
 ```http
