@@ -56,6 +56,12 @@ isw2_G5.liga_amateur/
 │   ├── entity/Cancha.java, Arbitro.java
 │   ├── repository/CanchaRepository.java, ArbitroRepository.java
 │   └── service/CatalogoService.java
+├── partido/               # partidos (José)
+│   ├── controller/PartidoController.java
+│   ├── dto/PartidoWriteRequest.java, PartidoResponse.java
+│   ├── entity/Partido.java, EstadoPartido.java
+│   ├── repository/PartidoRepository.java
+│   └── service/PartidoService.java, HorarioPartido.java
 └── common/
     ├── dto/ApiErrorResponse.java
     └── error/ApiExceptionHandler.java
@@ -77,6 +83,12 @@ Las pruebas de canchas y árbitros tampoco tocan `./data/liga_amateur`: las de c
 
 ```powershell
 .\mvnw.cmd -Dtest="Catalogo*Test" test
+```
+
+Las pruebas de partidos usan el mismo criterio: `EstadoPartidoTest` y `HorarioPartidoTest` no inician Spring, y `ProgramacionPartidosApiTest` levanta el contexto sobre una H2 **en memoria** (`jdbc:h2:mem:...`) con `schema.sql` y `data.sql`, sin tocar `./data/liga_amateur`:
+
+```powershell
+.\mvnw.cmd '-Dtest=EstadoPartidoTest,HorarioPartidoTest,ProgramacionPartidosApiTest' test
 ```
 
 El comando sin filtro `test` incluiría `contextLoads()` y puede reinicializar H2: **no ejecutarlo sin autorización y sin prever la pérdida de datos**. Documentar los comandos y resultados efectivamente ejecutados en cada PR.
