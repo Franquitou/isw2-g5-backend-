@@ -120,6 +120,22 @@ powershell -ExecutionPolicy Bypass -File .\run-local.ps1
 
 El script no modifica `spring.sql.init.mode`: el reinicio de la base H2 en cada arranque sigue el comportamiento documentado en esta sección.
 
+### Datos de demostración
+
+`seed-demo.ps1` carga cuatro equipos con cinco jugadores cada uno usando la API real y la cuenta ADMIN, así que respeta las validaciones del backend. Es idempotente: reutiliza los equipos por nombre y omite los jugadores cuyo DNI ya exista.
+
+```powershell
+.\seed-demo.ps1
+```
+
+Si el backend corre en otra máquina o puerto:
+
+```powershell
+.\seed-demo.ps1 -ApiUrl http://192.168.0.253:8080/api
+```
+
+Como `spring.sql.init.mode=always` reinicia la base en cada arranque, el script debe ejecutarse después de iniciar el backend.
+
 Las pruebas MVC de seguridad/login usan `spring.sql.init.mode=never` y una URL H2 **en memoria** como salvaguarda; esa porción MVC no registra `DataSource` y simula el repositorio. Verifican el recorrido HTTP login → Bearer → ruta protegida, pero **no sustituyen una prueba posterior con persistencia real**. Desde el proyecto Maven:
 
 ```powershell
