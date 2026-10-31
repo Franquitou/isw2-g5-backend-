@@ -7,6 +7,7 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.Collection;
 
 /** Acceso a los partidos programados. */
 public interface PartidoRepository extends JpaRepository<Partido, Integer> {
@@ -35,7 +36,17 @@ public interface PartidoRepository extends JpaRepository<Partido, Integer> {
      */
     List<Partido> findByArbitroIdAndEstadoNotAndFechaHoraInicioBetween(
             Integer arbitroId, EstadoPartido excluido, LocalDateTime desde, LocalDateTime hasta);
-
+    /**
+     * Indica si una jornada de un torneo tiene algún partido en alguno de los estados indicados.
+     * Se usa para RN-07: no se inicia la jornada N mientras la N−1 tenga partidos sin terminar.
+     *
+     * @param torneoId torneo consultado
+     * @param numeroFecha jornada consultada
+     * @param estados estados buscados
+     * @return {@code true} si existe al menos un partido así
+     */
+    boolean existsByTorneoIdAndNumeroFechaAndEstadoIn(
+            Integer torneoId, Integer numeroFecha, Collection<EstadoPartido> estados);
     /**
      * Cuenta los partidos de una jornada en los que juega alguno de los equipos indicados.
      * Sirve para impedir que un equipo juegue dos veces en la misma jornada.

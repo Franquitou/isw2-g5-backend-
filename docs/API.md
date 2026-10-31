@@ -191,9 +191,9 @@ GET /api/canchas
 [{"id":1,"nombre":"Cancha Municipal Norte","direccion":"Av. Blas Parera 7400","activo":true},{"id":3,"nombre":"Complejo El Alero","direccion":"Pje. Los Ceibos 1350","activo":true},{"id":2,"nombre":"Predio La Costanera","direccion":"Av. Almirante Brown 5200","activo":true}]
 ```
 
-### 6.2 Programación (RF-06: implementado), estados y listado (pendientes)
+### 6.2 Programación y estados (RF-06 y RF-07: implementados) y listado (pendiente)
 
-Estado de implementación: `POST`, `PUT` y `DELETE /api/partidos` están implementados en `isw2_G5.liga_amateur.partido`; `PATCH /api/partidos/{id}/estado` (RF-07) y el listado por jornada (RF-10) siguen pendientes.
+Estado de implementación: `POST`, `PUT` y `DELETE /api/partidos` (RF-06) y `PATCH /api/partidos/{id}/estado` (RF-07) están implementados en `isw2_G5.liga_amateur.partido`; el listado por jornada (RF-10) sigue pendiente.
 
 | Método y ruta | Acceso | Entrada | Respuesta exitosa | Errores relevantes |
 |---|---|---|---|---|
@@ -214,6 +214,14 @@ Decisiones de implementación de RF-06:
 - `fechaHoraInicio` se responde siempre con segundos y el offset de la liga (`2026-11-07T18:00:00-03:00`), aunque se haya enviado con otro offset (`2026-11-07T21:00:00Z` se guarda y responde como 18:00 de Santa Fe). Un valor sin offset es `400`.
 
 Transiciones exclusivas: `PROGRAMADO` → `EN_JUEGO` o `SUSPENDIDO`; `EN_JUEGO` → `FINALIZADO` o `SUSPENDIDO`. `FINALIZADO` y `SUSPENDIDO` son finales. Al **iniciar** un partido de la jornada N, RN-07 impide el cambio si algún partido de N−1 sigue `PROGRAMADO` o `EN_JUEGO`; se permite programar fechas futuras con anticipación. Un suspendido no se reprograma: se crea otro partido conforme a RF-06.
+
+Decisiones de implementación de RF-07:
+
+- `PartidoEstadoRequest`: `{"estado":"EN_JUEGO"}`. Un valor ausente o fuera de los cuatro estados es `400`.
+- Una transición no permitida (incluido pasar al mismo estado) es `409` con el mensaje `No se puede pasar un partido de <actual> a <nuevo>`.
+- RN-07 compara con la jornada N−1 **del mismo torneo** y solo bloquea el paso a `EN_JUEGO`: suspender o finalizar nunca queda bloqueado. Si la jornada N−1 no tiene partidos, no bloquea. Los `SUSPENDIDO` de N−1 no bloquean (P-01).
+- El partido se lee bloqueado, así que dos cambios simultáneos sobre el mismo partido se aplican de a uno.
+- Una vez iniciado, el partido ya no se puede reprogramar ni borrar (`409`, RF-06).
 
 Ejemplos (RF-06, RF-07 y listado RF-10):
 

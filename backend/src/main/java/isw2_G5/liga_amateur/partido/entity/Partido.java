@@ -88,6 +88,20 @@ public class Partido {
             Integer canchaId, Integer arbitroId, LocalDateTime fechaHoraInicio) {
         asignar(torneoId, numeroFecha, equipoLocalId, equipoVisitanteId, canchaId, arbitroId, fechaHoraInicio);
     }
+    /**
+     * Cambia el estado respetando las transiciones de RN-05 ({@link EstadoPartido#puedeCambiarA}).
+     * {@code PartidoService} valida antes y responde 409; esta comprobación evita que la entidad
+     * quede en un estado inválido aunque se la use desde otro lugar.
+     *
+     * @param nuevo estado de destino
+     * @throws IllegalStateException si la transición no está permitida
+     */
+    public void cambiarEstado(EstadoPartido nuevo) {
+        if (!estado.puedeCambiarA(nuevo)) {
+            throw new IllegalStateException("Transición no permitida: " + estado + " -> " + nuevo);
+        }
+        this.estado = nuevo;
+    }
 
     private void asignar(Integer torneoId, Integer numeroFecha, Integer equipoLocalId, Integer equipoVisitanteId,
             Integer canchaId, Integer arbitroId, LocalDateTime fechaHoraInicio) {

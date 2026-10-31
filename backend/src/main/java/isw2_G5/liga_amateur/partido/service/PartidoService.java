@@ -23,7 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Programación de partidos (RF-06): alta, reprogramación y baja de partidos {@code PROGRAMADO}.
+ * Programación de partidos (RF-06): alta, reprogramación y baja de partidos {@code PROGRAMADO};
+ * y cambio de estado (RF-07) con las reglas RN-05 y RN-07.
  *
  * <p>Reglas validadas en el backend (RNF-07):</p>
  * <ul>
@@ -109,12 +110,55 @@ public class PartidoService {
         partidoRepository.delete(buscarProgramado(id, "eliminar"));
     }
 
+
+    /**
+     * Cambia el estado de un partido (RF-07).
+     *
+     * <ul>
+     *   <li>RN-05: solo {@code PROGRAMADO → EN_JUEGO | SUSPENDIDO} y {@code EN_JUEGO → FINALIZADO | SUSPENDIDO}.</li>
+     *   <li>RN-07: un partido de la jornada N no puede pasar a {@code EN_JUEGO} mientras la jornada N−1 del mismo
+     *   torneo tenga partidos {@code PROGRAMADO} o {@code EN_JUEGO}. Los {@code SUSPENDIDO} no bloquean (P-01).
+     *   La regla solo se aplica al iniciar: suspender o finalizar nunca queda bloqueado.</li>
+     * </ul>
+     * <p>El partido se lee bloqueado para que dos cambios simultáneos sobre el mismo partido se apliquen
+     * de a uno y el segundo vea el estado que dejó el primero.</p>
+     *
+     * @param id identificador del partido
+     * @param nuevo estado de destino
+     * @return el partido con su nuevo estado
+     * @throws RecursoNoEncontradoException si el partido no existe
+     * @throws ConflictoException si la transición no está permitida o la jornada anterior no terminó
+     */
+    @Transactional
+    public PartidoResponse cambiarEstado(Integer id, EstadoPartido nuevo) {
+        Partido partido = buscarBloqueado(id);
+        EstadoPartido actual = partido.getEstado();
+        if (!actual.puedeCambiarA(nuevo)) {
+            throw new ConflictoException("No se puede pasar un partido de " + actual + " a " + nuevo);
+        }
+        int jornada = partido.getNumeroFecha();
+        if (nuevo == EstadoPartido.EN_JUEGO && jornada > 1
+                && partidoRepository.existsByTorneoIdAndNumeroFechaAndEstadoIn(partido.getTorneoId(), jornada - 1,
+                List.of(EstadoPartido.PROGRAMADO, EstadoPartido.EN_JUEGO))) {
+            throw new ConflictoException("No se puede iniciar un partido de la fecha " + jornada
+                    + " mientras la fecha " + (jornada - 1) + " tenga partidos sin terminar");
+        }
+        partido.cambiarEstado(nuevo);
+        partidoRepository.flush();
+        return PartidoResponse.from(partido);
+    }
+
     /** Busca y bloquea el partido, para que dos operaciones sobre el mismo partido no se pisen. */
-    private Partido buscarProgramado(Integer id, String accion) {
+    private Partido buscarBloqueado(Integer id) {
         if (id == null || id <= 0) {
             throw new SolicitudInvalidaException("El identificador de partido debe ser un entero positivo");
         }
-        Partido partido = bloquear(Partido.class, id, () -> "No existe el partido con id " + id);
+        return bloquear(Partido.class, id, () -> "No existe el partido con id " + id);
+    }
+
+    /** Busca y bloquea un partido que debe estar {@code PROGRAMADO} para poder modificarlo o borrarlo. */
+    private Partido buscarProgramado(Integer id, String accion) {
+        Partido partido = buscarBloqueado(id);
         if (partido.getEstado() != EstadoPartido.PROGRAMADO) {
             throw new ConflictoException("Solo se puede " + accion + " un partido PROGRAMADO; este está "
                     + partido.getEstado());
