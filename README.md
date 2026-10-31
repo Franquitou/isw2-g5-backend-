@@ -132,6 +132,18 @@ powershell -ExecutionPolicy Bypass -File .\run-local.ps1
 
 El script no modifica `spring.sql.init.mode`: el reinicio de la base H2 en cada arranque sigue el comportamiento documentado en esta sección.
 
+### Acceso desde la app web
+
+La app Expo puede ejecutarse en el navegador con `npx expo start --web`. Para que el navegador pueda llamar a la API, el backend habilita CORS solo para orígenes de desarrollo locales y de la LAN:
+
+```text
+http://localhost:[*]
+http://127.0.0.1:[*]
+http://192.168.*.*:[*]
+```
+
+La lista se configura con `liga.cors.allowed-origin-patterns` en `application.properties` (valores separados por coma). No se abre a cualquier origen de Internet.
+
 ### Datos de demostración
 
 `seed-demo.ps1` carga cuatro equipos con cinco jugadores cada uno usando la API real y la cuenta ADMIN, así que respeta las validaciones del backend. Es idempotente sobre los registros **activos**: reutiliza los equipos por nombre y omite los jugadores cuyo DNI ya exista en el plantel.
