@@ -7,6 +7,9 @@ import isw2_G5.liga_amateur.catalogo.repository.TorneoRepository;
 import isw2_G5.liga_amateur.common.error.ConflictoException;
 import isw2_G5.liga_amateur.common.error.RecursoNoEncontradoException;
 import isw2_G5.liga_amateur.common.error.SolicitudInvalidaException;
+import isw2_G5.liga_amateur.evento.dto.Marcador;
+import isw2_G5.liga_amateur.evento.service.MarcadorService;
+import isw2_G5.liga_amateur.partido.dto.PartidoListadoResponse;
 import isw2_G5.liga_amateur.partido.dto.PartidoResponse;
 import isw2_G5.liga_amateur.partido.dto.PartidoWriteRequest;
 import isw2_G5.liga_amateur.partido.entity.EstadoPartido;
@@ -18,13 +21,14 @@ import jakarta.persistence.LockTimeoutException;
 import jakarta.persistence.PessimisticLockException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Programación de partidos (RF-06): alta, reprogramación y baja de partidos {@code PROGRAMADO};
- * y cambio de estado (RF-07) con las reglas RN-05 y RN-07.
+ * cambio de estado (RF-07) con las reglas RN-05 y RN-07; y listado por jornada (RF-10).
  *
  * <p>Reglas validadas en el backend (RNF-07):</p>
  * <ul>
@@ -52,12 +56,14 @@ public class PartidoService {
 
     private final PartidoRepository partidoRepository;
     private final TorneoRepository torneoRepository;
+    private final MarcadorService marcadorService;
     private final EntityManager entityManager;
 
     public PartidoService(PartidoRepository partidoRepository, TorneoRepository torneoRepository,
-                          EntityManager entityManager) {
+                          MarcadorService marcadorService, EntityManager entityManager) {
         this.partidoRepository = partidoRepository;
         this.torneoRepository = torneoRepository;
+        this.marcadorService = marcadorService;
         this.entityManager = entityManager;
     }
 
@@ -108,6 +114,37 @@ public class PartidoService {
     @Transactional
     public void eliminar(Integer id) {
         partidoRepository.delete(buscarProgramado(id, "eliminar"));
+    }
+
+    /**
+     * Lista los partidos de una jornada (RF-10), en cualquier estado, con su resultado derivado de los eventos.
+     *
+     * <p>El marcador se calcula con {@code MarcadorService}, el único punto de cálculo de RN-06, así que el
+     * listado y el detalle devuelven exactamente el mismo {@code resultado}. Los partidos se ordenan por
+     * {@code fechaHoraInicio} y luego por id. Una jornada sin partidos devuelve una lista vacía.</p>
+     *
+     * @param torneoId identificador del torneo
+     * @param numeroFecha jornada consultada, desde 1
+     * @return partidos de la jornada con su marcador
+     * @throws SolicitudInvalidaException si el torneo o la jornada no son positivos
+     * @throws RecursoNoEncontradoException si el torneo no existe
+     */
+    public List<PartidoListadoResponse> listarPorJornada(Integer torneoId, Integer numeroFecha) {
+        if (torneoId == null || torneoId <= 0) {
+            throw new SolicitudInvalidaException("El identificador de torneo debe ser un entero positivo");
+        }
+        if (numeroFecha == null || numeroFecha <= 0) {
+            throw new SolicitudInvalidaException("El número de fecha debe ser un entero positivo");
+        }
+        if (!torneoRepository.existsById(torneoId)) {
+            throw new RecursoNoEncontradoException("No existe el torneo con id " + torneoId);
+        }
+        List<Partido> partidos = partidoRepository
+                .findByTorneoIdAndNumeroFechaOrderByFechaHoraInicioAscIdAsc(torneoId, numeroFecha);
+        Map<Integer, Marcador> marcadores = marcadorService.calcularPorPartido(partidos);
+        return partidos.stream()
+                .map(partido -> PartidoListadoResponse.from(partido, marcadores.get(partido.getId())))
+                .toList();
     }
 
 
