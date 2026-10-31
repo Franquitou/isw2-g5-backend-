@@ -26,6 +26,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,8 +72,10 @@ class EventosApiTest {
     }
 
     private Partido partido(int fecha, EstadoPartido estado) {
-        return partidoRepository.save(new Partido(1, fecha, local.getId(), visitante.getId(), 1, 1,
-                LocalDateTime.of(2026, 10, 28, 18, 0), estado));
+        Partido partido = new Partido(1, fecha, local.getId(), visitante.getId(), 1, 1,
+                LocalDateTime.of(2026, 10, 28, 18, 0));
+        ReflectionTestUtils.setField(partido, "estado", estado);
+        return partidoRepository.save(partido);
     }
 
     private MockHttpServletRequestBuilder comoDelegado(MockHttpServletRequestBuilder b) {
