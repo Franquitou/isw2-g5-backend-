@@ -300,14 +300,15 @@ class ProgramacionPartidosApiTest {
     }
 
     @Test
-    void reprogramarConservaUnEquipoQueSeDioDeBajaDespues() throws Exception {
+    void reprogramarConUnEquipoDadoDeBajaDevuelve409() throws Exception {
         int id = programarOk(cuerpo(1, norte, sur, 1, 1, SABADO_18));
         equipoRepository.findById(sur).orElseThrow().darDeBaja();
 
         mockMvc.perform(comoAdmin(put("/api/partidos/" + id))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(cuerpo(1, norte, sur, 1, 1, "2026-11-07T19:00:00-03:00")))
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El equipo visitante está dado de baja"));
     }
 
     @Test

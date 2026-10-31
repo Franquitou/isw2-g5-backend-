@@ -3,9 +3,6 @@ package isw2_G5.liga_amateur.partido.service;
 import isw2_G5.liga_amateur.catalogo.entity.Arbitro;
 import isw2_G5.liga_amateur.catalogo.entity.Cancha;
 import isw2_G5.liga_amateur.catalogo.entity.Equipo;
-import isw2_G5.liga_amateur.catalogo.repository.ArbitroRepository;
-import isw2_G5.liga_amateur.catalogo.repository.CanchaRepository;
-import isw2_G5.liga_amateur.catalogo.repository.EquipoRepository;
 import isw2_G5.liga_amateur.catalogo.repository.TorneoRepository;
 import isw2_G5.liga_amateur.common.error.ConflictoException;
 import isw2_G5.liga_amateur.common.error.RecursoNoEncontradoException;
@@ -15,10 +12,13 @@ import isw2_G5.liga_amateur.partido.dto.PartidoWriteRequest;
 import isw2_G5.liga_amateur.partido.entity.EstadoPartido;
 import isw2_G5.liga_amateur.partido.entity.Partido;
 import isw2_G5.liga_amateur.partido.repository.PartidoRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.LockTimeoutException;
+import jakarta.persistence.PessimisticLockException;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
-import java.util.function.Function;
+import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,12 +29,18 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>Torneo, equipos, cancha y árbitro existentes (404).</li>
  *   <li>Equipos distintos y del mismo torneo del partido (409).</li>
- *   <li>Equipos, cancha y árbitro habilitados al asignarlos (409).</li>
+ *   <li>Equipos, cancha y árbitro habilitados, tanto al crear como al reprogramar (409).</li>
  *   <li>Un equipo no juega dos veces en la misma jornada (409).</li>
  *   <li>Cancha y árbitro sin otro partido a menos de dos horas (RN-01 y RN-02, 409).</li>
  * </ul>
  * <p>Los partidos {@code SUSPENDIDO} no ocupan cancha, árbitro ni jornada: un suspendido no se reprograma,
  * se crea otro partido en su lugar.</p>
+ *
+ * <p><b>Concurrencia.</b> Validar y guardar ocurre en una sola transacción que primero bloquea
+ * ({@code PESSIMISTIC_WRITE}) las filas de los equipos, la cancha y el árbitro involucrados. Dos solicitudes
+ * que comparten alguno de esos recursos se ejecutan una después de la otra, y la segunda ya ve el partido
+ * de la primera, por lo que no pueden generarse superposiciones. Los bloqueos se toman siempre en el mismo
+ * orden (equipos por id ascendente, cancha, árbitro) para evitar esperas cruzadas.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -45,18 +51,13 @@ public class PartidoService {
 
     private final PartidoRepository partidoRepository;
     private final TorneoRepository torneoRepository;
-    private final EquipoRepository equipoRepository;
-    private final CanchaRepository canchaRepository;
-    private final ArbitroRepository arbitroRepository;
+    private final EntityManager entityManager;
 
     public PartidoService(PartidoRepository partidoRepository, TorneoRepository torneoRepository,
-                          EquipoRepository equipoRepository, CanchaRepository canchaRepository,
-                          ArbitroRepository arbitroRepository) {
+                          EntityManager entityManager) {
         this.partidoRepository = partidoRepository;
         this.torneoRepository = torneoRepository;
-        this.equipoRepository = equipoRepository;
-        this.canchaRepository = canchaRepository;
-        this.arbitroRepository = arbitroRepository;
+        this.entityManager = entityManager;
     }
 
     /**
@@ -70,10 +71,10 @@ public class PartidoService {
     @Transactional
     public PartidoResponse programar(PartidoWriteRequest request) {
         LocalDateTime inicio = HorarioPartido.aHoraLiga(request.fechaHoraInicio());
-        validar(request, inicio, null);
+        validar(request, inicio, SIN_PARTIDO);
         Partido partido = new Partido(request.torneoId(), request.numeroFecha(), request.equipoLocalId(),
                 request.equipoVisitanteId(), request.canchaId(), request.arbitroId(), inicio);
-        return PartidoResponse.from(partidoRepository.save(partido));
+        return PartidoResponse.from(partidoRepository.saveAndFlush(partido));
     }
 
     /**
@@ -89,9 +90,10 @@ public class PartidoService {
     public PartidoResponse reprogramar(Integer id, PartidoWriteRequest request) {
         Partido partido = buscarProgramado(id, "modificar");
         LocalDateTime inicio = HorarioPartido.aHoraLiga(request.fechaHoraInicio());
-        validar(request, inicio, partido);
+        validar(request, inicio, partido.getId());
         partido.reprogramar(request.torneoId(), request.numeroFecha(), request.equipoLocalId(),
                 request.equipoVisitanteId(), request.canchaId(), request.arbitroId(), inicio);
+        partidoRepository.flush();
         return PartidoResponse.from(partido);
     }
 
@@ -107,12 +109,12 @@ public class PartidoService {
         partidoRepository.delete(buscarProgramado(id, "eliminar"));
     }
 
+    /** Busca y bloquea el partido, para que dos operaciones sobre el mismo partido no se pisen. */
     private Partido buscarProgramado(Integer id, String accion) {
         if (id == null || id <= 0) {
             throw new SolicitudInvalidaException("El identificador de partido debe ser un entero positivo");
         }
-        Partido partido = partidoRepository.findById(id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el partido con id " + id));
+        Partido partido = bloquear(Partido.class, id, () -> "No existe el partido con id " + id);
         if (partido.getEstado() != EstadoPartido.PROGRAMADO) {
             throw new ConflictoException("Solo se puede " + accion + " un partido PROGRAMADO; este está "
                     + partido.getEstado());
@@ -122,41 +124,40 @@ public class PartidoService {
 
     /**
      * Valida todas las reglas de RF-06. Primero las referencias (404) y después los conflictos (409).
+     * Las referencias se leen bloqueadas: ver la nota de concurrencia de la clase.
      *
      * @param request datos recibidos
      * @param inicio inicio ya convertido a la zona de la liga
-     * @param actual partido que se está editando, o {@code null} al crear
+     * @param excluirId partido que se está editando, o {@link #SIN_PARTIDO} al crear
      */
-    private void validar(PartidoWriteRequest request, LocalDateTime inicio, Partido actual) {
+    private void validar(PartidoWriteRequest request, LocalDateTime inicio, int excluirId) {
         if (!torneoRepository.existsById(request.torneoId())) {
             throw new RecursoNoEncontradoException("No existe el torneo con id " + request.torneoId());
         }
-        Equipo local = buscarEquipo(request.equipoLocalId());
-        Equipo visitante = buscarEquipo(request.equipoVisitanteId());
-        Cancha cancha = canchaRepository.findById(request.canchaId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("No existe la cancha con id " + request.canchaId()));
-        Arbitro arbitro = arbitroRepository.findById(request.arbitroId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el árbitro con id " + request.arbitroId()));
+        Integer localId = request.equipoLocalId();
+        Integer visitanteId = request.equipoVisitanteId();
+        Equipo primero = bloquearEquipo(Math.min(localId, visitanteId));
+        Equipo segundo = bloquearEquipo(Math.max(localId, visitanteId));
+        Equipo local = primero.getId().equals(localId) ? primero : segundo;
+        Equipo visitante = primero.getId().equals(visitanteId) ? primero : segundo;
+        Cancha cancha = bloquear(Cancha.class, request.canchaId(),
+                () -> "No existe la cancha con id " + request.canchaId());
+        Arbitro arbitro = bloquear(Arbitro.class, request.arbitroId(),
+                () -> "No existe el árbitro con id " + request.arbitroId());
 
-        if (local.getId().equals(visitante.getId())) {
+        if (localId.equals(visitanteId)) {
             throw new ConflictoException("El equipo local y el visitante deben ser distintos");
         }
         if (!local.getTorneoId().equals(request.torneoId()) || !visitante.getTorneoId().equals(request.torneoId())) {
             throw new ConflictoException("Ambos equipos deben pertenecer al torneo del partido");
         }
-        exigirHabilitado(local.isActivo(), cambia(actual, Partido::getEquipoLocalId, local.getId()),
-                "El equipo local está dado de baja");
-        exigirHabilitado(visitante.isActivo(), cambia(actual, Partido::getEquipoVisitanteId, visitante.getId()),
-                "El equipo visitante está dado de baja");
-        exigirHabilitado(cancha.isActivo(), cambia(actual, Partido::getCanchaId, cancha.getId()),
-                "La cancha no está habilitada");
-        exigirHabilitado(arbitro.isActivo(), cambia(actual, Partido::getArbitroId, arbitro.getId()),
-                "El árbitro no está habilitado");
+        exigirHabilitado(local.isActivo(), "El equipo local está dado de baja");
+        exigirHabilitado(visitante.isActivo(), "El equipo visitante está dado de baja");
+        exigirHabilitado(cancha.isActivo(), "La cancha no está habilitada");
+        exigirHabilitado(arbitro.isActivo(), "El árbitro no está habilitado");
 
-        int excluirId = actual == null ? SIN_PARTIDO : actual.getId();
         long partidosEnFecha = partidoRepository.contarPartidosDeEquiposEnFecha(request.torneoId(),
-                request.numeroFecha(), List.of(local.getId(), visitante.getId()), EstadoPartido.SUSPENDIDO,
-                excluirId);
+                request.numeroFecha(), List.of(localId, visitanteId), EstadoPartido.SUSPENDIDO, excluirId);
         if (partidosEnFecha > 0) {
             throw new ConflictoException("Alguno de los equipos ya tiene un partido en la fecha "
                     + request.numeroFecha());
@@ -174,23 +175,31 @@ public class PartidoService {
         }
     }
 
-    private Equipo buscarEquipo(Integer id) {
-        return equipoRepository.findById(id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el equipo con id " + id));
+    private Equipo bloquearEquipo(Integer id) {
+        return bloquear(Equipo.class, id, () -> "No existe el equipo con id " + id);
     }
 
     /**
-     * Un equipo, cancha o árbitro dado de baja no puede asignarse. Al reprogramar se permite conservar
-     * una asignación que ya tenía el partido: qué hacer con esos partidos es la pregunta abierta P-06.
+     * Lee una fila bloqueándola hasta el fin de la transacción ({@code SELECT ... FOR UPDATE}).
+     * Si otra transacción la retiene más allá del tiempo de espera de la base, responde 409 para reintentar.
      */
-    private static void exigirHabilitado(boolean activo, boolean seAsigna, String mensaje) {
-        if (!activo && seAsigna) {
-            throw new ConflictoException(mensaje);
+    private <T> T bloquear(Class<T> tipo, Integer id, Supplier<String> mensajeNoEncontrado) {
+        T entidad;
+        try {
+            entidad = entityManager.find(tipo, id, LockModeType.PESSIMISTIC_WRITE);
+        } catch (PessimisticLockException | LockTimeoutException exception) {
+            throw new ConflictoException("Otra programación simultánea usa los mismos recursos; reintentá la operación");
         }
+        if (entidad == null) {
+            throw new RecursoNoEncontradoException(mensajeNoEncontrado.get());
+        }
+        return entidad;
     }
 
-    private static boolean cambia(Partido actual, Function<Partido, Integer> campo, Integer nuevoId) {
-        return actual == null || !Objects.equals(campo.apply(actual), nuevoId);
+    private static void exigirHabilitado(boolean activo, String mensaje) {
+        if (!activo) {
+            throw new ConflictoException(mensaje);
+        }
     }
 
     private static boolean hayChoque(List<Partido> candidatos, LocalDateTime inicio, int excluirId) {

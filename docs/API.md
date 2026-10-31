@@ -209,7 +209,8 @@ Decisiones de implementación de RF-06:
 
 - Orden de validación: primero el cuerpo (`400`), después las referencias inexistentes (`404`) y por último las reglas de negocio (`409`), cada una con un mensaje propio en `message`.
 - Un partido `SUSPENDIDO` no ocupa cancha, árbitro ni jornada: como no se reprograma, se puede crear su reemplazo en la misma jornada.
-- Equipos, cancha y árbitro dados de baja no pueden **asignarse**. Al reprogramar se permite conservar una asignación que el partido ya tenía, aunque se haya dado de baja después; qué ocurre con esos partidos es la pregunta abierta P-06.
+- Equipos, cancha y árbitro dados de baja no pueden usarse ni al programar ni al reprogramar (`409`). Qué ocurre con los partidos ya programados de un equipo que se da de baja sigue abierto (P-06); hasta que se acuerde, no se aplica ninguna excepción.
+- Concurrencia: validar y guardar ocurre en una sola transacción que bloquea (`SELECT ... FOR UPDATE`) los equipos, la cancha y el árbitro involucrados. Dos solicitudes simultáneas que comparten alguno de esos recursos se procesan una después de la otra, así que no pueden generar superposiciones; si la espera supera el tiempo de bloqueo de la base, se responde `409` para reintentar.
 - `fechaHoraInicio` se responde siempre con segundos y el offset de la liga (`2026-11-07T18:00:00-03:00`), aunque se haya enviado con otro offset (`2026-11-07T21:00:00Z` se guarda y responde como 18:00 de Santa Fe). Un valor sin offset es `400`.
 
 Transiciones exclusivas: `PROGRAMADO` → `EN_JUEGO` o `SUSPENDIDO`; `EN_JUEGO` → `FINALIZADO` o `SUSPENDIDO`. `FINALIZADO` y `SUSPENDIDO` son finales. Al **iniciar** un partido de la jornada N, RN-07 impide el cambio si algún partido de N−1 sigue `PROGRAMADO` o `EN_JUEGO`; se permite programar fechas futuras con anticipación. Un suspendido no se reprograma: se crea otro partido conforme a RF-06.
